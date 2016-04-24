@@ -1,14 +1,16 @@
-;(function(){
+;(function appjs(){
 
-var myFunc = xlog.wrap(function(a, b){
+myFunc = log.wrap(function myFunc(a, b, c){
+	log("inside myFunc, app.js");
 	return a + b;
-}, 'myFunc', ['a', 'b']); 
+}); 
 
 log('yo');
+log();
 
-var anotherFunc = xlog.wrap(function(){
+var anotherFunc = xlog.wrap(function anotherFunc(){
 	return myFunc(1, 2) + myFunc(3, 4) * myFunc(5, 6);
-}, 'anotherFunc'); 
+}); 
 
 log("ruh roh, double digits");
 
@@ -19,6 +21,10 @@ log.groupc('My test group');
 			two: "two"
 		});
 	}
+
+	log.groupc("a group");
+	log("word");
+	log.end();
 	
 	log("here we go");
 	
@@ -38,6 +44,8 @@ log('word');
 log(123);
 log(true);
 log({one: 1, two: "two", three: true, four: function(){} }, "hello", 123)
+
+wrappedGlobalFunction();
 
 anotherFunc();
 

@@ -71,6 +71,16 @@ var getBacktrace = function(){
 	return backtrace; //.slice(3);
 };
 
+var STRIP_COMMENTS = /((\/\/.*$)|(\/\*[\s\S]*?\*\/))/mg;
+var ARGUMENT_NAMES = /([^\s,]+)/g;
+function getParamNames(func) {
+  var fnStr = func.toString().replace(STRIP_COMMENTS, '');
+  var result = fnStr.slice(fnStr.indexOf('(')+1, fnStr.indexOf(')')).match(ARGUMENT_NAMES);
+  if(result === null)
+     result = [];
+  return result;
+}
+
 var noop = function(){};
 
 var bg = "background: #eee;";
@@ -80,25 +90,27 @@ log = function(){
 };
 xlog = function(val){ return val; };
 
+var groupStyles = 
+	"margin-left: -8px; \
+	padding: 3px 5px 2px; \
+	border-bottom: 1px solid #ddd; \
+	background: #eee; \
+	line-height: 16px;";
+
 log.lastFile = "";
 log.log = function(val){
 	var trace = getBacktrace()[3],
 		args = Array.prototype.slice.call(arguments);
 
 	log.fileGroup(trace);
-	// console.group(log.trace(), "font-size: 12px; font-weight: normal");
-	args.unshift('%c' + trace.line, "background: #eee; margin-left: -8px; padding: 3px 5px 1px; border-bottom: 1px solid #ddd");
+	args.unshift('%c' + trace.line, groupStyles);
 	console.log.apply(console, args);
-	// log.end();
+
 	return val; // always return 1st arg to be an "identity" fn 
 };
 
 log.end = function(){
-	// console.warn("log.end", log.currentGroup.type);
-
 	log.closeCurrentGroup();
-	// log.lastGroupType = log.lastGroupTypes.pop();
-	// log.lastCloser.close();
 };
 xlog.end = noop;
 
@@ -117,6 +129,7 @@ log.addGroup = function(group){
 	log.currentGroup = group;
 };
 log.closeCurrentGroup = function(){
+	console.log("log.closeCurrentGroup", log.currentGroup);
 	if (log.currentGroup.type !== "root" && log.openGroups.length){
 		log.currentGroup.close();
 		if (log.currentGroup.type == "user"){
@@ -129,18 +142,6 @@ log.closeCurrentGroup = function(){
 	} else {
 		return false;
 	}
-};
-log.closeCurrentUserGroup = function(){
-	if (log.currentUserGroup){
-		if (log.currentUserGroup.open)
-			log.currentUserGroup.close();
-
-	} else {
-		console.warn("no current user group");
-	}
-	if (log.openUserGroups.length){
-
-	} 
 };
 
 log.newUserGroup = function(){
@@ -178,21 +179,10 @@ log.closeAll = function(){
 	while (log.closeCurrentGroup()){}
 };
 
-var group = {
-	type: "user" || "file",
-	open: true || false,
-	close: function(){
-		if (this.open){
-			console.groupEnd();
-			this.open = false;
-		} else {
-			console.warn("already closed!!");
-		}
-	}
-}
-
-var groupCloser = function(){
-	var closer = {
+log.newFileGroup = function(file){
+	var fileGroup = {
+		type: "file",
+		file: file,
 		open: true,
 		close: function(){
 			if (this.open){
@@ -203,69 +193,30 @@ var groupCloser = function(){
 			}
 		}
 	};
-	// setTimeout(function(){
-	// 	closer.close();
-	// }, 0);
-	return closer;
-};
-
-log.newFileGroup = function(file){
-	var fileGroup = {
-		type: "file",
-		file: file,
-		open: true,
-		close: group.close
-	};
 
 	log.addGroup(fileGroup);
 };
 
+
 log.lastGroupType = "root";
 
 log.fileGroup = function(trace){
-	var fileGroup;
 	// if log comes from a different file
 	if (!log.currentFileGroup || (log.currentFileGroup && log.currentFileGroup.file !== trace.file)){
 		// and if current group type is file, 
 		if (log.currentGroup.type == "file"){
-			// console.warn("closing currentGroup.type == file");
+			// console.warn("auto closing file group");
 			log.closeCurrentGroup();
 		}
 		
-			// console.dir(log);
+		// if the above block is executed, currentFileGroup.file changes
 		if (!log.currentFileGroup || (log.currentFileGroup.file !== trace.file)){
-			console.group("%c"+trace.file, "margin-left: -4px; background: #eee; border-bottom: 1px solid #bbb; padding: 0px 3px 1px;");
+			// console.warn("auto file group");
+			console.group("%c"+trace.file, groupStyles);
 			log.newFileGroup(trace.file);
 		}
 	}
-	// if (log.lastFile !== trace.file){
-
-	// 	if (log.lastFileCloser && log.lastGroupType == 'file'){
-	// 		console.log("closing file group");
-	// 		log.lastGroupType = log.lastGroupTypes.pop();
-	// 		console.log("lastGroupType", log.lastGroupType);
-	// 		log.lastFileCloser.close();
-	// 	}
-
-	// 	console.group("%c"+trace.file, "margin-left: -4px; background: #eee; border-bottom: 1px solid #bbb; padding: 0px 3px 1px;");
-
-		
-	// 	log.lastFile = trace.file;
-	// 	log.lastFileCloser = groupCloser();
-
-	// 	// "Q-tip" pattern :D
-	// 	log.lastGroupTypes.push(log.lastGroupType);
-	// 	// console.log("adding current lastGroupType to lastGroupTypes: ", log.lastGroupType, "==>", log.lastGroupTypes);
-	// 	log.lastGroupType = "file";
-	// 	// console.log("lastGroupType", log.lastGroupType);
-	// }
 };
-
-var groupStyles = 
-	"margin-left: -8px; \
-	padding: 3px 5px 1px; \
-	border-bottom: 1px solid #ddd; \
-	background: #eee;"
 
 log.lastGroupTypes = [];
 
@@ -278,14 +229,6 @@ log.group = function(name){
 	args.unshift("%c" + trace.line, groupStyles )
 	console.group.apply(console, args);
 	log.newUserGroup();
-		// log.lastCloser = groupCloser();
-
-
-		// // "Q-tip" pattern :D
-		// log.lastGroupTypes.push(log.lastGroupType);
-		// // console.log("adding current lastGroupType to lastGroupTypes: ", log.lastGroupType, "==>", log.lastGroupTypes);
-		// log.lastGroupType = "user";
-		// // console.log("lastGroupType", log.lastGroupType);
 };
 xlog.group = noop;
 
@@ -297,21 +240,21 @@ log.groupc = function(){
 	args.unshift("%c" + trace.line, groupStyles )
 	console.groupCollapsed.apply(console, args);
 	log.newUserGroup();
-		// log.lastCloser = groupCloser();
-
-		// // "Q-tip" pattern :D
-		// log.lastGroupTypes.push(log.lastGroupType);
-		// // console.log("adding current lastGroupType to lastGroupTypes: ", log.lastGroupType, "==>", log.lastGroupTypes);
-		// log.lastGroupType = "user";
-		// // console.log("lastGroupType", log.lastGroupType);
 };
 
-log.wrap = function(fn, name, argNames){
-		// console.log(getBacktrace());
-		// console.trace();
+log.wrap = function(fn){
+	// console.log('wrap bt', fn.name, getBacktrace());
+	var bt = getBacktrace(),
+		trace = bt[2],
+		argNames = getParamNames(fn),
+		def = {
+			name: fn.name,
+			argNames: argNames,
+			file: trace.file,
+			line: trace.line
+		};
 	return function(){
-		// console.log('backtrace', getBacktrace());
-		return log.ret(fn.apply(this, log.args(arguments, name, argNames)));
+		return log.ret(fn.apply(this, log.args(arguments, def)));
 	};
 };
 xlog.wrap = function(fn){ return fn; }
@@ -322,20 +265,68 @@ log.wrapi = function(fn, name, argNames){
 	};
 };
 
+log.newFunctionGroup = function(name, argNames){
+	var functionGroup = {
+		open: true,
+		type: "function",
+		close: function(){
+			if (this.open){
+				console.groupEnd();
+				this.open = false;
+			} else {
+				console.warn("already closed!!");
+			}
+		},
+		name: name,
+		argNames: argNames
+	};
+
+	log.addGroup(functionGroup);
+};
+
+
+/* 
+TODO
+If log.wrapc (collapsed), and ret is undefined, 
+	put the "return value" inside the group, or before the groupEnd() (keep it tidy)
+
+If log.wrap (expanded), and ret is undefined, 
+	put the "return value" inside the group, or before the groupEnd()
+	if the ret value is undefined, we don't need to see it when we collapse the group
+
+If ret is defined, put it outside the group
+*/
 log.ret = function(ret){
-	console.log('return', ret);
-	console.groupEnd();
+	if (is.def(ret)){
+		console.groupEnd();
+		console.log('%creturn', groupStyles + "margin-left: 6px", ret);
+	} else {
+		console.log('%creturn', groupStyles, ret);
+		console.groupEnd();
+	}
 	return ret;
 };
 
-log.args = function(args, name, argNames){
-	var label = [ name + "(" ];
-	if (args.length){
-		for (var i in args){
+log.args = function(args, def){
+	var bt = getBacktrace(), 
+		trace = bt[3],
+		name = def.name,
+		argNames = def.argNames;
+
+	// console.warn("log.args", args, name, argNames);
+	// console.log("trace", trace);
+
+	// console.log("currentFileGroup", log.currentFileGroup);
+	log.fileGroup(trace);
+
+	var label = [ "%c" + trace.line, groupStyles, name + "(" ];
+
+	if (argNames.length){
+		for (var i in argNames){
 			if (argNames[i])
 				label.push(argNames[i]+":");
 			label.push(args[i]);
-			if (i < args.length - 1){
+			if (i < argNames.length - 1){
 				label.push(",");
 			}
 		}
@@ -343,7 +334,23 @@ log.args = function(args, name, argNames){
 	label.push(")");
 
 
-	console.group.apply(console, label);
+	console.groupCollapsed.apply(console, label);
+	log.newFunctionGroup(name, argNames);
+
+	// if fn is defined elsewhere
+	if (!log.currentFileGroup || (log.currentFileGroup && log.currentFileGroup.file !== def.file)){
+		// console.warn("fake file group");
+		console.log("%c"+def.file, groupStyles + "font-weight: bold");
+		log.addGroup({
+			type: "file",
+			open: false,
+			file: def.file,
+			close: function(){
+				console.warn("closing fake file/fn hybrid group");
+			}
+		});
+	}
+
 	return args;
 };
 
@@ -360,14 +367,22 @@ log.trace = function(){
 	return trace;
 };
 
-globalFunction = function(){
+wrappedGlobalFunction = log.wrap(function wrappedGlobalFunction(){
+	log("wrappedGlobalFunction in log.js");
+	globalFunction();
+	log("calling myFunc in app.js");
+	myFunc();
+	log("fn ending");
+});
+
+globalFunction = xlog.wrap(function globalFunction(){
 	log('globalFunction, from log.js');
 	log("bt"); log(getBacktrace());
 	log.group('a group inside globalFunction', 1234, function(){});
 	log('whatup');
 	log.end();
 	log("back to root level of globalFunction");
-};
+});
 
 globalFunction2 = function(){
 	// log('globalFunction, from log.js');
