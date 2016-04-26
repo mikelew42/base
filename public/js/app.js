@@ -30,7 +30,7 @@ log.groupc('My test group');
 	
 	globalFunction();
 	
-	myFunc(1, 2);
+	log("a", a = myFunc(1, 2));
 	
 	log.group("another group");
 		log("inside another group");
@@ -48,11 +48,6 @@ log({one: 1, two: "two", three: true, four: function(){} }, "hello", 123)
 wrappedGlobalFunction();
 
 anotherFunc();
-
-console.groupCollapsed('Collapsed Group');
-console.log('/path/to/file.js', '@ line 234');
-console.groupEnd();
-console.log("%creturn", "margin-left: 20px;", 2324)
 
 globalFunction();
 

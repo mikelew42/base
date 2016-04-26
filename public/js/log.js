@@ -129,7 +129,7 @@ log.addGroup = function(group){
 	log.currentGroup = group;
 };
 log.closeCurrentGroup = function(){
-	console.log("log.closeCurrentGroup", log.currentGroup);
+	// console.log("log.closeCurrentGroup", log.currentGroup);
 	if (log.currentGroup.type !== "root" && log.openGroups.length){
 		log.currentGroup.close();
 		if (log.currentGroup.type == "user"){
@@ -201,6 +201,7 @@ log.newFileGroup = function(file){
 log.lastGroupType = "root";
 
 log.fileGroup = function(trace){
+	// console.log("log.fileGroup", trace.file, log.currentFileGroup, log.currentGroup);
 	// if log comes from a different file
 	if (!log.currentFileGroup || (log.currentFileGroup && log.currentFileGroup.file !== trace.file)){
 		// and if current group type is file, 
@@ -265,7 +266,7 @@ log.wrapi = function(fn, name, argNames){
 	};
 };
 
-log.newFunctionGroup = function(name, argNames){
+log.newFunctionGroup = function(name, argNames, defFile){
 	var functionGroup = {
 		open: true,
 		type: "function",
@@ -273,12 +274,17 @@ log.newFunctionGroup = function(name, argNames){
 			if (this.open){
 				console.groupEnd();
 				this.open = false;
+				if (log.currentFileGroup.fake && log.currentFileGroup.file === this.defFile)
+					log.currentFileGroup = log.openFileGroups.pop();
+
 			} else {
 				console.warn("already closed!!");
 			}
 		},
 		name: name,
-		argNames: argNames
+		argNames: argNames,
+		fileDepth: log.openFileGroups.length,
+		defFile: defFile
 	};
 
 	log.addGroup(functionGroup);
@@ -298,11 +304,19 @@ If ret is defined, put it outside the group
 */
 log.ret = function(ret){
 	if (is.def(ret)){
-		console.groupEnd();
+		if (log.currentGroup.type == "function")
+			log.closeCurrentGroup();
+		else
+			console.error("log.ret attempting to close non-function group");
+		// console.groupEnd();
 		console.log('%creturn', groupStyles + "margin-left: 6px", ret);
 	} else {
 		console.log('%creturn', groupStyles, ret);
-		console.groupEnd();
+		// console.groupEnd();
+		if (log.currentGroup.type == "function")
+			log.closeCurrentGroup();
+		else
+			console.error("log.ret attempting to close non-function group");
 	}
 	return ret;
 };
@@ -335,20 +349,22 @@ log.args = function(args, def){
 
 
 	console.groupCollapsed.apply(console, label);
-	log.newFunctionGroup(name, argNames);
+	log.newFunctionGroup(name, argNames, def.file);
 
 	// if fn is defined elsewhere
 	if (!log.currentFileGroup || (log.currentFileGroup && log.currentFileGroup.file !== def.file)){
 		// console.warn("fake file group");
 		console.log("%c"+def.file, groupStyles + "font-weight: bold");
-		log.addGroup({
+		log.openFileGroups.push(log.currentFileGroup);
+		log.currentFileGroup = {
 			type: "file",
+			fake: true,
 			open: false,
 			file: def.file,
 			close: function(){
 				console.warn("closing fake file/fn hybrid group");
 			}
-		});
+		};
 	}
 
 	return args;
@@ -375,7 +391,7 @@ wrappedGlobalFunction = log.wrap(function wrappedGlobalFunction(){
 	log("fn ending");
 });
 
-globalFunction = xlog.wrap(function globalFunction(){
+globalFunction = log.wrap(function globalFunction(){
 	log('globalFunction, from log.js');
 	log("bt"); log(getBacktrace());
 	log.group('a group inside globalFunction', 1234, function(){});
