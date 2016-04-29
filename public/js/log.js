@@ -102,7 +102,7 @@ log.log = function(val){
 	var trace = getBacktrace()[3],
 		args = Array.prototype.slice.call(arguments);
 
-	log.fileGroup(trace);
+	log.autoFileGroup(trace);
 	args.unshift('%c' + trace.line, groupStyles);
 	console.log.apply(console, args);
 
@@ -115,16 +115,9 @@ log.end = function(){
 xlog.end = noop;
 
 log.openGroups = [];
-log.openUserGroups = [];
-log.openFileGroups = [];
+log.currentFile = "";
+log.openFiles = [];
 log.addGroup = function(group){
-	if (group.type == "file"){
-		log.openFileGroups.push(log.currentFileGroup);
-		log.currentFileGroup = group;
-	} else if (group.type == "user") {
-		log.openUserGroups.push(log.currentUserGroup);
-		log.currentUserGroup = group;
-	}
 	log.openGroups.push(log.currentGroup);
 	log.currentGroup = group;
 };
@@ -132,11 +125,6 @@ log.closeCurrentGroup = function(){
 	// console.log("log.closeCurrentGroup", log.currentGroup);
 	if (log.currentGroup.type !== "root" && log.openGroups.length){
 		log.currentGroup.close();
-		if (log.currentGroup.type == "user"){
-			log.currentUserGroup = log.openUserGroups.pop();
-		} else if (log.currentGroup.type == "file"){
-			log.currentFileGroup = log.openFileGroups.pop();
-		}
 		log.currentGroup = log.openGroups.pop();
 		return true;
 	} else {
@@ -179,10 +167,34 @@ log.closeAll = function(){
 	while (log.closeCurrentGroup()){}
 };
 
+log.resetToLastFile = function(){
+	log.currentFile = log.openFiles.pop();
+};
+
 log.newFileGroup = function(file){
-	var fileGroup = {
-		type: "file",
-		file: file,
+	var fileGroup = log.newGroup();
+
+	fileGroup.lastFile = log.currentFile;
+	log.currentFile = file;
+	
+
+	fileGroup.type = "file";
+	fileGroup.file = file;
+	fileGroup.close = function(){
+		if (this.open){
+			console.groupEnd();
+			log.currentFile = this.lastFile;
+			this.open = false;
+		} else {
+			console.warn("already closed!!");
+		}
+	};
+
+	return fileGroup;
+};
+
+log.newGroup = function(){
+	var group = {
 		open: true,
 		close: function(){
 			if (this.open){
@@ -194,27 +206,29 @@ log.newFileGroup = function(file){
 		}
 	};
 
-	log.addGroup(fileGroup);
+	log.addGroup(group);
+
+	return group;
 };
 
 
 log.lastGroupType = "root";
 
-log.fileGroup = function(trace){
-	// console.log("log.fileGroup", trace.file, log.currentFileGroup, log.currentGroup);
-	// if log comes from a different file
-	if (!log.currentFileGroup || (log.currentFileGroup && log.currentFileGroup.file !== trace.file)){
-		// and if current group type is file, 
+log.makeFileGroup = function(trace){
+	console.group("%c"+trace.file, groupStyles);
+	log.newFileGroup(trace.file);
+};
+
+log.autoFileGroup = function(trace){
+	if (!log.currentFile){
+		log.makeFileGroup(trace);
+	} else if (log.currentFile !== trace.file) {
 		if (log.currentGroup.type == "file"){
-			// console.warn("auto closing file group");
 			log.closeCurrentGroup();
 		}
-		
-		// if the above block is executed, currentFileGroup.file changes
-		if (!log.currentFileGroup || (log.currentFileGroup.file !== trace.file)){
-			// console.warn("auto file group");
-			console.group("%c"+trace.file, groupStyles);
-			log.newFileGroup(trace.file);
+
+		if (log.currentFile !== trace.file){
+			log.makeFileGroup(trace);
 		}
 	}
 };
@@ -226,7 +240,7 @@ log.group = function(name){
 	var trace = getBacktrace()[2],
 		args = Array.prototype.slice.call(arguments);
 
-	log.fileGroup(trace);
+	log.autoFileGroup(trace);
 	args.unshift("%c" + trace.line, groupStyles )
 	console.group.apply(console, args);
 	log.newUserGroup();
@@ -237,7 +251,7 @@ log.groupc = function(){
 	var trace = getBacktrace()[2],
 		args = Array.prototype.slice.call(arguments);
 
-	log.fileGroup(trace);
+	log.autoFileGroup(trace);
 	args.unshift("%c" + trace.line, groupStyles )
 	console.groupCollapsed.apply(console, args);
 	log.newUserGroup();
@@ -266,7 +280,7 @@ log.wrapi = function(fn, name, argNames){
 	};
 };
 
-log.newFunctionGroup = function(name, argNames, defFile){
+log.newFunctionGroup = function(name, argNames, defFile, callTrace){
 	var functionGroup = {
 		open: true,
 		type: "function",
@@ -274,8 +288,12 @@ log.newFunctionGroup = function(name, argNames, defFile){
 			if (this.open){
 				console.groupEnd();
 				this.open = false;
-				if (log.currentFileGroup.fake && log.currentFileGroup.file === this.defFile)
-					log.currentFileGroup = log.openFileGroups.pop();
+
+				// do we need to track open files?
+				log.currentFile = this.callTrace.file;
+
+				// if (log.currentFileGroup.fake && log.currentFileGroup.file === this.defFile)
+				// 	log.currentFileGroup = log.openFileGroups.pop();
 
 			} else {
 				console.warn("already closed!!");
@@ -283,8 +301,9 @@ log.newFunctionGroup = function(name, argNames, defFile){
 		},
 		name: name,
 		argNames: argNames,
-		fileDepth: log.openFileGroups.length,
-		defFile: defFile
+		// fileDepth: log.openFileGroups.length,
+		defFile: defFile,
+		callTrace: callTrace
 	};
 
 	log.addGroup(functionGroup);
@@ -331,7 +350,7 @@ log.args = function(args, def){
 	// console.log("trace", trace);
 
 	// console.log("currentFileGroup", log.currentFileGroup);
-	log.fileGroup(trace);
+	log.autoFileGroup(trace);
 
 	var label = [ "%c" + trace.line, groupStyles, name + "(" ];
 
@@ -349,22 +368,12 @@ log.args = function(args, def){
 
 
 	console.groupCollapsed.apply(console, label);
-	log.newFunctionGroup(name, argNames, def.file);
+	log.newFunctionGroup(name, argNames, def.file, trace);
 
 	// if fn is defined elsewhere
-	if (!log.currentFileGroup || (log.currentFileGroup && log.currentFileGroup.file !== def.file)){
-		// console.warn("fake file group");
+	if (!log.currentFile || (log.currentFile !== def.file)){
 		console.log("%c"+def.file, groupStyles + "font-weight: bold");
-		log.openFileGroups.push(log.currentFileGroup);
-		log.currentFileGroup = {
-			type: "file",
-			fake: true,
-			open: false,
-			file: def.file,
-			close: function(){
-				console.warn("closing fake file/fn hybrid group");
-			}
-		};
+		log.currentFile = def.file;
 	}
 
 	return args;
@@ -391,7 +400,7 @@ wrappedGlobalFunction = log.wrap(function wrappedGlobalFunction(){
 	log("fn ending");
 });
 
-globalFunction = log.wrap(function globalFunction(){
+globalFunction = xlog.wrap(function globalFunction(){
 	log('globalFunction, from log.js');
 	log("bt"); log(getBacktrace());
 	log.group('a group inside globalFunction', 1234, function(){});
