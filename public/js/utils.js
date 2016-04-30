@@ -2,12 +2,6 @@
 
 var utils = window.utils = window.utils || {};
 
-log('this is utils.js');
-log('this is utils.js');
-log(123);
-log(true);
-log({one: 1, two: "two", three: true, four: function(){} }, "hello", 123)
-
 /*****************
 	CLICK OFF
 ******************/

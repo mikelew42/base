@@ -1,4 +1,4 @@
-;(function appjs(){
+;(xlog.wrapx(function appjs(){
 
 myFunc = log.wrap(function myFunc(a, b, c){
 	log("inside myFunc, app.js");
@@ -8,7 +8,7 @@ myFunc = log.wrap(function myFunc(a, b, c){
 log('yo');
 log();
 
-var anotherFunc = xlog.wrap(function anotherFunc(){
+var anotherFunc = log.wrap(function anotherFunc(){
 	return myFunc(1, 2) + myFunc(3, 4) * myFunc(5, 6);
 }); 
 
@@ -57,8 +57,35 @@ globalFunction2();
 
 log("back to app.js");
 
+log.if(-1).then(function(){
+	log('yo');
+})
+
+var a = log.wrap(function a(){
+	return true;
+});
+var c = log.wrap(function c(){
+	return true;
+});
+
+var b = log.wrap(function b(){
+	return false;
+});
+var d = log.wrap(function d(){
+	return false;
+});
+
+if ( (a() && c()) && (b() || !d())){
+
+}
+
+
+var MyClass = log.wrap(function MyClass(){
+
+});
+
 $(function(){
 
 });
 
-})();
+}))();

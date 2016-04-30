@@ -1,28 +1,22 @@
 ;(function(utils){
-var is = utils.is,
-	log = true;
+var is = utils.is;
 
 ;(function(is){
 // copy1
 
 
 
-var copy1 = utils.copy1 = function(value, base){
+var copy1 = utils.copy1 = log.wrap(function copy1(value, base){
 	var ret;
-
-	log && console.groupCollapsed('copy1(value:', value, ')');
 	
 	if (value && value.copy){
-		log && console.log('Using value.copy');
 		ret = value.copy();
 	} else {
 		// log && console.log('std copy (no OO value.copy)');
 		ret = std(value, base);
 	}
-	log && console.log('return ', ret);
-	log && console.groupEnd();
 	return ret;
-};
+});
 
 var getBase = copy1.getBase = function(value){
 	return (is.obj(value) && {}) || 
@@ -35,7 +29,6 @@ var returnable = copy1.returnable = function(value){
 
 var std = copy1.std = function(value, base){
 	if (returnable(value)){
-		log && console.log('value is returnable');
 		return value;
 	}
 
@@ -74,9 +67,8 @@ var iterate = copy1.iterate = function(value, base){
 			continue;
 		}
 		
-		log && console.group(i);
-		base[i] = copy1(value[i]);
-		log && console.groupEnd();
+		log(i);
+		base[i] = copy1(value[i])
 	}
 
 	if (base.props){
