@@ -133,6 +133,7 @@ log.addGroup = function(group){
 log.add = function(group){
 	log.openGroups.push(log.currentGroup);
 	log.currentGroup = group;
+	return group;
 };
 
 log.closeCurrentGroup = function(){
@@ -237,6 +238,29 @@ Cleanup groups with timeout?
 		}
 	});
 
+	// must be closed!!
+	/* NEH!  Allow the last arg of this fn to be an anonymous function, which will be a much
+	more robust end of the group.  A separate startGroup and startGroupc could be used for times in which continuity
+	cannot be maintained. */
+	log.group = function(name){
+		log.add(new Group({
+			trace: getBacktrace()[2],
+			type: "user",
+			arguments: arguments
+		}));
+	};
+	xlog.group = noop;
+
+	log.groupc = function(){
+		log.add(new Group({
+			trace: getBacktrace()[2], 
+			type: "user",
+			arguments: arguments,
+			method: "groupCollapsed"
+		}));
+	};
+	xlog.groupc = noop;
+
 
 
 /* * * * * * * * * * *
@@ -245,90 +269,264 @@ Cleanup groups with timeout?
 Make sure to pass lastFile (which should be log.currentFile)
  */
 
-var FileGroup = function FileGroup(){
-	Group.apply(this, arguments);
-};
+	var FileGroup = function FileGroup(){
+		this.assign.apply(this, arguments);
+		this.initialize();
+	};
 
-FileGroup.prototype = Object.create(Group.prototype);
+	FileGroup.prototype = Object.create(Group.prototype);
 
-FileGroup.prototype.assign({
-	type: "file",
-	initialize: function(){
-		log.currentFile = this.trace.file;
-		// log.autoFileGroup(this.trace());
-		this.log(this.args());
-	},
-	customArgs: function(){
-		this._args.unshift("%c"+ this.trace.file, groupStyles);
-	},
-	close: function(){
-		if (this.open){
-			console.groupEnd();
-			log.currentFile = this.lastFile;
-			this.open = false;
-		} else {
-			console.warn("already closed!!");
+	FileGroup.prototype.assign({
+		type: "file",
+		initialize: function(){
+			log.currentFile = this.trace.file;
+			// log.autoFileGroup(this.trace());
+			this.log(this.args());
+		},
+		customArgs: function(){
+			this._args.unshift("%c"+ this.trace.file, groupStyles);
+		},
+		close: function(){
+			if (this.open){
+				console.groupEnd();
+				log.currentFile = this.lastFile;
+				this.open = false;
+			} else {
+				console.warn("already closed!!");
+			}
 		}
-	}
-});
+	});
 
+	log.makeFileGroup = function(trace){
+		log.add(new FileGroup({
+			trace: trace,
+			lastFile: log.currentFile
+		}));
+	};
 
-
-
-log.makeFileGroup = function(trace){
-	log.add(new FileGroup({
-		trace: trace,
-		lastFile: log.currentFile
-	}));
-};
-
-log.autoFileGroup = function(trace){
-	if (!log.currentFile){
-		log.makeFileGroup(trace);
-	} else if (log.currentFile !== trace.file) {
-		if (log.currentGroup.type == "file"){
-			log.closeCurrentGroup();
-		}
-
-		if (log.currentFile !== trace.file){
+	log.autoFileGroup = function(trace){
+		if (!log.currentFile){
 			log.makeFileGroup(trace);
+		} else if (log.currentFile !== trace.file) {
+			if (log.currentGroup.type == "file"){
+				log.closeCurrentGroup();
+			}
+
+			if (log.currentFile !== trace.file){
+				log.makeFileGroup(trace);
+			}
 		}
-	}
-};
+	};
 
-// must be closed!!
-/* NEH!  Allow the last arg of this fn to be an anonymous function, which will be a much
-more robust end of the group.  A separate startGroup and startGroupc could be used for times in which continuity
-cannot be maintained. */
-log.group = function(name){
-	log.add(new Group({
-		trace: getBacktrace()[2],
-		type: "user",
-		arguments: arguments
-	}));
-};
-xlog.group = noop;
 
-log.groupc = function(){
-	log.add(new Group({
-		trace: getBacktrace()[2], 
-		type: "user",
-		arguments: arguments,
-		method: "groupCollapsed"
-	}));
+
+/* * * * * * * * * * *
+ *  FUNCTION GROUP
+
+Blah
+ */
+
+ 	var FunctionGroup = function FunctionGroup(){
+ 		this.assign.apply(this, arguments);
+ 		this.initialize();
+ 	};
+
+ 	FunctionGroup.prototype = Object.create(Group.prototype);
+
+ 	FunctionGroup.prototype.assign({
+ 		type: "function",
+ 		initialize: function(){
+ 			// temp
+	 		if (true){
+	 			this.name = this.def.name;
+	 			this.defFile = this.def.trace.file;
+	 			this.argNames = this.def.argNames;
+
+	 			if (!this.def.expand)
+	 				this.method = "groupCollapsed";
+
+ 				this.autoFileGroup();
+ 				this.log(this.args());
+ 				this.fileChangeLabel();
+ 			}
+
+ 		},
+ 		retLog: function(){
+ 			if (is.def(this.returnValue)){
+ 				if (log.currentGroup.type == "function")
+ 					log.closeCurrentGroup();
+ 				else
+ 					console.error("log.ret attempting to close non-function group", log.currentGroup);
+ 				// console.groupEnd();
+ 				console.log('%creturn', groupStyles + "margin-left: 6px", this.returnValue);
+ 			} else {
+ 				console.log('%creturn', groupStyles, this.returnValue);
+ 				// console.groupEnd();
+ 				if (log.currentGroup.type == "function")
+ 					log.closeCurrentGroup();
+ 				else
+ 					console.error("log.ret attempting to close non-function group", log.currentGroup);
+ 			}
+ 			return this.returnValue;
+ 		},
+ 		evaluate: function(){
+ 			this.returnValue = this.def.fn.apply(this.ctx, this.arguments);
+ 			this.retLog();
+ 			return this.returnValue;
+ 		},
+ 		fileChangeLabel: function(){
+ 			// if fn is defined elsewhere, label the file change
+ 			if (!log.currentFile || (log.currentFile !== this.def.file)){
+ 				console.log("%c"+ this.def.file, groupStyles + "font-weight: bold");
+ 				log.currentFile = this.def.file;
+ 			}
+ 		},
+ 		args: function(){
+ 			if (this._args){
+ 				return this._args;
+ 			} else {
+ 				// build the function call label
+ 				var label = [ "%c" + this.trace.line, groupStyles, this.name + "(" ];
+
+ 				if (this.argNames.length){
+ 					for (var i = 0; i < this.argNames.length; i++){
+ 						if (this.argNames[i])
+ 							label.push(this.argNames[i]+":");
+ 						label.push(this.arguments[i]);
+ 						if (i < this.argNames.length - 1){
+ 							label.push(",");
+ 						}
+ 					}
+ 				}
+ 				label.push(")");
+ 				this._args = label;
+ 				return this._args;
+ 			}
+ 		},
+ 		close: function(){
+ 			if (this.open){
+ 				console.groupEnd();
+ 				this.open = false;
+ 				log.currentFile = this.trace.file;
+ 			} else {
+ 				console.warn("already closed!!");
+ 			}
+ 		}
+ 	});
+
+
+ 	var FunctionDefinition = function FunctionDefinition(){
+ 		this.assign.apply(this, arguments);
+ 		this.initialize();
+ 	};
+
+ 	FunctionDefinition.prototype = Object.create(Base.prototype);
+
+ 	FunctionDefinition.prototype.assign({
+ 		initialize: function(){
+ 			this.name = this.fn.name;
+ 			this.argNames = getParamNames(this.fn);
+
+ 			// temp
+ 			this.line = this.trace.line;
+ 			this.file = this.trace.file;
+ 		},
+ 		wrapper: function(){
+ 			var def = this;
+ 			return function wrapper(){
+ 				var fnGroup = log.add(new FunctionGroup({
+ 					trace: getBacktrace()[2],
+ 					def: def,
+ 					arguments: arguments,
+ 					ctx: this
+ 				}));
+ 				return fnGroup.evaluate();
+ 			};
+ 		}
+ 	});
+
+ 	log.args = function(args, def){
+ 		var bt = getBacktrace(), 
+ 			trace = bt[3],
+ 			name = def.name,
+ 			argNames = def.argNames;
+
+ 		log.autoFileGroup(trace);
+
+ 		// build the function call label
+ 		var label = [ "%c" + trace.line, groupStyles, name + "(" ];
+
+ 		if (argNames.length){
+ 			for (var i in argNames){
+ 				if (argNames[i])
+ 					label.push(argNames[i]+":");
+ 				label.push(args[i]);
+ 				if (i < argNames.length - 1){
+ 					label.push(",");
+ 				}
+ 			}
+ 		}
+ 		label.push(")");
+
+ 		if (def.expand)
+ 			console.group.apply(console, label);
+ 		else
+ 			console.groupCollapsed.apply(console, label);
+
+ 		log.add(new FunctionGroup({
+ 			trace: trace,
+ 			name: name,
+ 			argNames: argNames,
+ 			defFile: def.file
+ 		}));
+ 		// log.newFunctionGroup(name, argNames, def.file, trace);
+
+ 		// if fn is defined elsewhere, label the file change
+ 		if (!log.currentFile || (log.currentFile !== def.file)){
+ 			console.log("%c"+def.file, groupStyles + "font-weight: bold");
+ 			log.currentFile = def.file;
+ 		}
+
+ 		return args;
+ 	};
+
+
+log.newFunctionGroup = function(name, argNames, defFile, callTrace){
+	var functionGroup = {
+		open: true,
+		type: "function",
+		close: function(){
+			if (this.open){
+				console.groupEnd();
+				this.open = false;
+
+				// do we need to track open files?
+				log.currentFile = this.callTrace.file;
+
+				// if (log.currentFileGroup.fake && log.currentFileGroup.file === this.defFile)
+				// 	log.currentFileGroup = log.openFileGroups.pop();
+
+			} else {
+				console.warn("already closed!!");
+			}
+		},
+		name: name,
+		argNames: argNames,
+		// fileDepth: log.openFileGroups.length,
+		defFile: defFile,
+		callTrace: callTrace
+	};
+
+	log.addGroup(functionGroup);
 };
-xlog.groupc = noop;
 
 log.wrap = function(fn){
-	// console.log('wrap bt', fn.name, getBacktrace());
-	var bt = getBacktrace(),
-		trace = bt[2],
-		def = {
-			name: fn.name,
-			argNames: getParamNames(fn),
-			file: trace.file,
-			line: trace.line
-		};
+
+	var def = new FunctionDefinition({
+		trace: getBacktrace()[2],
+		fn: fn
+	});
+	return def.wrapper();
 	return function(){
 		// this can probably be condensed into one function call..?
 		return log.ret(fn.apply(this, log.args(arguments, def)));
@@ -369,35 +567,6 @@ log.wrapi = function(fn, name, argNames){
 	};
 };
 
-log.newFunctionGroup = function(name, argNames, defFile, callTrace){
-	var functionGroup = {
-		open: true,
-		type: "function",
-		close: function(){
-			if (this.open){
-				console.groupEnd();
-				this.open = false;
-
-				// do we need to track open files?
-				log.currentFile = this.callTrace.file;
-
-				// if (log.currentFileGroup.fake && log.currentFileGroup.file === this.defFile)
-				// 	log.currentFileGroup = log.openFileGroups.pop();
-
-			} else {
-				console.warn("already closed!!");
-			}
-		},
-		name: name,
-		argNames: argNames,
-		// fileDepth: log.openFileGroups.length,
-		defFile: defFile,
-		callTrace: callTrace
-	};
-
-	log.addGroup(functionGroup);
-};
-
 log.ret = function(ret){
 	if (is.def(ret)){
 		if (log.currentGroup.type == "function")
@@ -419,44 +588,7 @@ log.ret = function(ret){
 
 log.fnCallLabel = function(callTrace, def){};
 
-log.args = function(args, def){
-	var bt = getBacktrace(), 
-		trace = bt[3],
-		name = def.name,
-		argNames = def.argNames;
 
-	log.autoFileGroup(trace);
-
-	// build the function call label
-	var label = [ "%c" + trace.line, groupStyles, name + "(" ];
-
-	if (argNames.length){
-		for (var i in argNames){
-			if (argNames[i])
-				label.push(argNames[i]+":");
-			label.push(args[i]);
-			if (i < argNames.length - 1){
-				label.push(",");
-			}
-		}
-	}
-	label.push(")");
-
-	if (def.expand)
-		console.group.apply(console, label);
-	else
-		console.groupCollapsed.apply(console, label);
-
-	log.newFunctionGroup(name, argNames, def.file, trace);
-
-	// if fn is defined elsewhere, label the file change
-	if (!log.currentFile || (log.currentFile !== def.file)){
-		console.log("%c"+def.file, groupStyles + "font-weight: bold");
-		log.currentFile = def.file;
-	}
-
-	return args;
-};
 
 log.cond = function(value){
 	return {
