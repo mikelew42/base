@@ -79,7 +79,7 @@ var getBacktrace = function(){
 
 		backtrace.push(bt);
 	}
-
+// console.log(backtrace);
 	return backtrace; //.slice(3);
 };
 
@@ -98,10 +98,13 @@ var noop = function(){};
 var bg = "background: #eee;";
 
 log = function(val){
+	// console.log("+++++++++++================= new log =======================++++++++++++");
 	new Log({
 		arguments: arguments,
 		trace: getBacktrace()[2]
 	});
+	// console.table(log.openGroups);
+	// console.log("++++++++++++================ end new log ====================++++++++++++++\r\n \r\n ");
 
 	return val; // always return 1st arg to be an "identity" fn 
 };
@@ -119,7 +122,7 @@ var groupStyles =
 	line-height: 16px;";
 
 log.end = function(){
-	log.closeCurrentGroup();
+	log.currentGroup.close();
 };
 xlog.end = noop;
 
@@ -136,16 +139,16 @@ log.add = function(group){
 	return group;
 };
 
-log.closeCurrentGroup = function(){
-	// console.log("log.closeCurrentGroup", log.currentGroup);
-	if (log.currentGroup.type !== "root" && log.openGroups.length){
-		log.currentGroup.close();
-		log.currentGroup = log.openGroups.pop();
-		return true;
-	} else {
-		return false;
-	}
-};
+// log.closeCurrentGroup = function(){
+// 	// console.log("log.closeCurrentGroup", log.currentGroup);
+// 	if (log.currentGroup.type !== "root" && log.openGroups.length){
+// 		log.currentGroup.close();
+// 		log.currentGroup = log.openGroups.pop();
+// 		return true;
+// 	} else {
+// 		return false;
+// 	}
+// };
 
 
 
@@ -168,16 +171,31 @@ Log.prototype.assign({
 		this.log(this.args());
 	},
 	autoFileGroup: function(){
+		var p = false, a = false, b = false;
+
 		if (log.currentFile !== this.trace.file) {
+			p = true;
+			// console.log(true, "file mismatch, current file: ", log.currentFile, "!== new file:", this.trace.file);
+
 			if (log.currentGroup.type == "file"){
-				log.closeCurrentGroup();
+				a = true;
+				// console.log(true, "log.currentGroup.type == 'file'");
+				// console.warn("log.currentGroup.close()");
+				log.currentGroup.close();
+			} else {
+				// console.log(false, "current group is not a file group", "currentGroup.type:", log.currentGroup.type);
 			}
 
 			if (log.currentFile !== this.trace.file){
+				b = true;
+				// console.log(true, "file mismatch, current file: ", log.currentFile, "still !== new file:", this.trace.file);
+				// console.log("adding auto FileGroup");
 				log.add(new FileGroup({
 					trace: this.trace,
 					lastFile: log.currentFile
 				}));
+			} else {
+				// console.log(false);
 			}
 		}
 	},
@@ -221,10 +239,16 @@ Cleanup groups with timeout?
 		open: true,
 		close: function(){
 			if (this.open){
-				console.groupEnd();
-				this.open = false;
+				if (this === log.currentGroup){
+					console.groupEnd();
+					console.log.apply(console, ['closed default group: '].concat(this.arguments));
+					this.open = false;
+					log.currentGroup = log.openGroups.pop();
+				} else {
+					console.warn("attempting to close incorrect group", this, log.currentGroup);
+				}
 			} else {
-				console.warn("already closed!!");
+				console.warn("already closed user group", this.arguments);
 			}
 		}
 	});
@@ -243,24 +267,38 @@ Cleanup groups with timeout?
 	more robust end of the group.  A separate startGroup and startGroupc could be used for times in which continuity
 	cannot be maintained. */
 	log.group = function(name){
-		log.add(new Group({
+		var ret;
+		// console.log(" \r\n \r\n%c================= new group =======================", "color: #ff6600");
+		ret = log.add(new Group({
 			trace: getBacktrace()[2],
 			type: "user",
 			arguments: arguments
 		}));
+		// console.log("%c================= end group =======================\r\n \r\n ", "color: #ff6600");
+		return ret;
 	};
 	xlog.group = noop;
 
 	log.groupc = function(){
-		log.add(new Group({
+		var ret;
+		// console.log("%c================= new collapsed group =======================", "color: #ff6600");
+		ret = log.add(new Group({
 			trace: getBacktrace()[2], 
 			type: "user",
 			arguments: arguments,
 			method: "groupCollapsed"
 		}));
+		// console.log("%c================= end collapsed group =======================\r\n \r\n ", "color: #ff6600");
+		return ret;
 	};
 	xlog.groupc = noop;
 
+	log.closeAll = function(){
+		var groupCount = log.openGroups.length;
+		for (var i = 0; i < groupCount; i++){
+			log.currentGroup.close();
+		}
+	};
 
 
 /* * * * * * * * * * *
@@ -279,20 +317,33 @@ Make sure to pass lastFile (which should be log.currentFile)
 	FileGroup.prototype.assign({
 		type: "file",
 		initialize: function(){
+			// console.log("%c================= new file group =======================", "color: #006622");
 			log.currentFile = this.trace.file;
 			// log.autoFileGroup(this.trace());
 			this.log(this.args());
+
+			var self = this;
+			setTimeout(function(){
+				self.close(1);
+			}, 0);
+			// console.log("%c================= end file group =======================\r\n \r\n ", "color: #006622");
 		},
 		customArgs: function(){
 			this._args.unshift("%c"+ this.trace.file, groupStyles);
 		},
-		close: function(){
+		close: function(auto){
 			if (this.open){
-				console.groupEnd();
-				log.currentFile = this.lastFile;
-				this.open = false;
+				if (this === log.currentGroup){
+					console.groupEnd();
+					console.log('closed file group: ' + this.trace.file);
+					log.currentFile = this.lastFile;
+					this.open = false;
+					log.currentGroup = log.openGroups.pop();
+				} else {
+					console.warn("attempting to close incorrect group!", this, log.currentGroup);
+				}
 			} else {
-				console.warn("already closed!!");
+				console.warn((auto ? "auto " : "") + "already closed file group: ", this.trace.file);
 			}
 		}
 	});
@@ -304,19 +355,19 @@ Make sure to pass lastFile (which should be log.currentFile)
 		}));
 	};
 
-	log.autoFileGroup = function(trace){
-		if (!log.currentFile){
-			log.makeFileGroup(trace);
-		} else if (log.currentFile !== trace.file) {
-			if (log.currentGroup.type == "file"){
-				log.closeCurrentGroup();
-			}
+	// log.autoFileGroup = function(trace){
+	// 	if (!log.currentFile){
+	// 		log.makeFileGroup(trace);
+	// 	} else if (log.currentFile !== trace.file) {
+	// 		if (log.currentGroup.type == "file"){
+	// 			log.closeCurrentGroup();
+	// 		}
 
-			if (log.currentFile !== trace.file){
-				log.makeFileGroup(trace);
-			}
-		}
-	};
+	// 		if (log.currentFile !== trace.file){
+	// 			log.makeFileGroup(trace);
+	// 		}
+	// 	}
+	// };
 
 
 
@@ -335,6 +386,7 @@ Blah
 
  	FunctionGroup.prototype.assign({
  		type: "function",
+ 		afg: true,
  		initialize: function(){
  			// temp
 	 		if (true){
@@ -345,16 +397,23 @@ Blah
 	 			if (!this.def.expand)
 	 				this.method = "groupCollapsed";
 
- 				this.autoFileGroup();
+ 				this.afg && this.autoFileGroup();
  				this.log(this.args());
  				this.fileChangeLabel();
  			}
 
  		},
  		retLog: function(){
+ 			if (log.currentGroup !== this){
+ 				if (log.currentGroup.type === 'file')
+ 					log.currentGroup.close();
+ 				else
+ 					console.warn("group inconsistency");
+ 			}
+
  			if (is.def(this.returnValue)){
- 				if (log.currentGroup.type == "function")
- 					log.closeCurrentGroup();
+ 				if (log.currentGroup === this)
+ 					log.currentGroup.close();
  				else
  					console.error("log.ret attempting to close non-function group", log.currentGroup);
  				// console.groupEnd();
@@ -362,8 +421,8 @@ Blah
  			} else {
  				console.log('%creturn', groupStyles, this.returnValue);
  				// console.groupEnd();
- 				if (log.currentGroup.type == "function")
- 					log.closeCurrentGroup();
+ 				if (log.currentGroup === this)
+ 					log.currentGroup.close();
  				else
  					console.error("log.ret attempting to close non-function group", log.currentGroup);
  			}
@@ -405,11 +464,17 @@ Blah
  		},
  		close: function(){
  			if (this.open){
- 				console.groupEnd();
- 				this.open = false;
- 				log.currentFile = this.trace.file;
+ 				if (this === log.currentGroup){
+	 				console.groupEnd();
+	 				console.log("closed fn group: ", this.name);
+	 				this.open = false;
+	 				log.currentFile = this.trace.file;
+ 					log.currentGroup = log.openGroups.pop();
+ 				} else {
+ 					console.warn("attempting to close incorrect group");
+ 				}
  			} else {
- 				console.warn("already closed!!");
+ 				console.warn("already closed, fn group: ", this.name);
  			}
  		}
  	});
@@ -434,160 +499,83 @@ Blah
  		wrapper: function(){
  			var def = this;
  			return function wrapper(){
+ 				// console.log("%c================= fn wrapper called =======================", "color: purple");
  				var fnGroup = log.add(new FunctionGroup({
  					trace: getBacktrace()[2],
  					def: def,
  					arguments: arguments,
  					ctx: this
- 				}));
- 				return fnGroup.evaluate();
+ 				})), ret;
+ 				ret = fnGroup.evaluate();
+ 				// console.log("%c================= end fn wrapper call =======================\r\n \r\n ", "color: purple");
+ 				return ret;
  			};
  		}
  	});
 
- 	log.args = function(args, def){
- 		var bt = getBacktrace(), 
- 			trace = bt[3],
- 			name = def.name,
- 			argNames = def.argNames;
+ 	// log.args = function(args, def){
+ 	// 	var bt = getBacktrace(), 
+ 	// 		trace = bt[3],
+ 	// 		name = def.name,
+ 	// 		argNames = def.argNames;
 
- 		log.autoFileGroup(trace);
+ 	// 	log.autoFileGroup(trace);
 
- 		// build the function call label
- 		var label = [ "%c" + trace.line, groupStyles, name + "(" ];
+ 	// 	// build the function call label
+ 	// 	var label = [ "%c" + trace.line, groupStyles, name + "(" ];
 
- 		if (argNames.length){
- 			for (var i in argNames){
- 				if (argNames[i])
- 					label.push(argNames[i]+":");
- 				label.push(args[i]);
- 				if (i < argNames.length - 1){
- 					label.push(",");
- 				}
- 			}
- 		}
- 		label.push(")");
+ 	// 	if (argNames.length){
+ 	// 		for (var i in argNames){
+ 	// 			if (argNames[i])
+ 	// 				label.push(argNames[i]+":");
+ 	// 			label.push(args[i]);
+ 	// 			if (i < argNames.length - 1){
+ 	// 				label.push(",");
+ 	// 			}
+ 	// 		}
+ 	// 	}
+ 	// 	label.push(")");
 
- 		if (def.expand)
- 			console.group.apply(console, label);
- 		else
- 			console.groupCollapsed.apply(console, label);
+ 	// 	if (def.expand)
+ 	// 		console.group.apply(console, label);
+ 	// 	else
+ 	// 		console.groupCollapsed.apply(console, label);
 
- 		log.add(new FunctionGroup({
- 			trace: trace,
- 			name: name,
- 			argNames: argNames,
- 			defFile: def.file
- 		}));
- 		// log.newFunctionGroup(name, argNames, def.file, trace);
+ 	// 	log.add(new FunctionGroup({
+ 	// 		trace: trace,
+ 	// 		name: name,
+ 	// 		argNames: argNames,
+ 	// 		defFile: def.file
+ 	// 	}));
+ 	// 	// log.newFunctionGroup(name, argNames, def.file, trace);
 
- 		// if fn is defined elsewhere, label the file change
- 		if (!log.currentFile || (log.currentFile !== def.file)){
- 			console.log("%c"+def.file, groupStyles + "font-weight: bold");
- 			log.currentFile = def.file;
- 		}
+ 	// 	// if fn is defined elsewhere, label the file change
+ 	// 	if (!log.currentFile || (log.currentFile !== def.file)){
+ 	// 		console.log("%c"+def.file, groupStyles + "font-weight: bold");
+ 	// 		log.currentFile = def.file;
+ 	// 	}
 
- 		return args;
- 	};
-
-
-log.newFunctionGroup = function(name, argNames, defFile, callTrace){
-	var functionGroup = {
-		open: true,
-		type: "function",
-		close: function(){
-			if (this.open){
-				console.groupEnd();
-				this.open = false;
-
-				// do we need to track open files?
-				log.currentFile = this.callTrace.file;
-
-				// if (log.currentFileGroup.fake && log.currentFileGroup.file === this.defFile)
-				// 	log.currentFileGroup = log.openFileGroups.pop();
-
-			} else {
-				console.warn("already closed!!");
-			}
-		},
-		name: name,
-		argNames: argNames,
-		// fileDepth: log.openFileGroups.length,
-		defFile: defFile,
-		callTrace: callTrace
-	};
-
-	log.addGroup(functionGroup);
-};
+ 	// 	return args;
+ 	// };
 
 log.wrap = function(fn){
-
 	var def = new FunctionDefinition({
 		trace: getBacktrace()[2],
 		fn: fn
 	});
 	return def.wrapper();
-	return function(){
-		// this can probably be condensed into one function call..?
-		return log.ret(fn.apply(this, log.args(arguments, def)));
-	};
 };
 xlog.wrap = function(fn){ return fn; }
 
 log.wrapx = function(fn){
-	var bt = getBacktrace(),
-		trace = bt[2],
-		argNames = getParamNames(fn),
-		def = {
-			name: fn.name,
-			argNames: argNames,
-			file: trace.file,
-			line: trace.line,
-			expand: true
-		};
-	return function(){
-		return log.ret(fn.apply(this, log.args(arguments, def)));
-	};
+	var def = new FunctionDefinition({
+		trace: getBacktrace()[2],
+		fn: fn,
+		expand: true
+	});
+	return def.wrapper();
 }
 xlog.wrapx = function(fn){ return fn;}
-
-log.wrapi = function(fn, name, argNames){
-	// console.log('wrap bt', fn.name, getBacktrace());
-	var bt = getBacktrace(),
-		trace = bt[2],
-		argNames = getParamNames(fn),
-		def = {
-			name: fn.name,
-			argNames: argNames,
-			file: trace.file,
-			line: trace.line
-		};
-	return function(){
-		return log.ret(fn.apply(this, log.args(arguments, def)));
-	};
-};
-
-log.ret = function(ret){
-	if (is.def(ret)){
-		if (log.currentGroup.type == "function")
-			log.closeCurrentGroup();
-		else
-			console.error("log.ret attempting to close non-function group");
-		// console.groupEnd();
-		console.log('%creturn', groupStyles + "margin-left: 6px", ret);
-	} else {
-		console.log('%creturn', groupStyles, ret);
-		// console.groupEnd();
-		if (log.currentGroup.type == "function")
-			log.closeCurrentGroup();
-		else
-			console.error("log.ret attempting to close non-function group");
-	}
-	return ret;
-};
-
-log.fnCallLabel = function(callTrace, def){};
-
 
 
 log.cond = function(value){
@@ -605,74 +593,74 @@ log.cond = function(value){
 /*
 params:  truthy || { __cond: true }
 */
-log.if = function(cond){
-	var trace = getBacktrace()[2];
-	// console.log(trace);
-	if (is.obj(cond) && cond.__cond){
-		return cond;
-	} else {
-		if (cond){
-			return {
-				then: function(fn){
-					log.autoFileGroup(trace);
-					// log(trace);
-					console.group('%c'+trace.line + '%cif', groupStyles,"color: green; margin-left: 5px", cond);
-					fn();
-					console.groupEnd();
-					return {
-						elseIf: function(cond){
-							return {
-								then: function(){},
-								else: function(){}
-							}
-						},
-						else: function(fn){}
-					}
-				},
-				and: function(cond){
+// log.if = function(cond){
+// 	var trace = getBacktrace()[2];
+// 	// console.log(trace);
+// 	if (is.obj(cond) && cond.__cond){
+// 		return cond;
+// 	} else {
+// 		if (cond){
+// 			return {
+// 				then: function(fn){
+// 					log.autoFileGroup(trace);
+// 					// log(trace);
+// 					console.group('%c'+trace.line + '%cif', groupStyles,"color: green; margin-left: 5px", cond);
+// 					fn();
+// 					console.groupEnd();
+// 					return {
+// 						elseIf: function(cond){
+// 							return {
+// 								then: function(){},
+// 								else: function(){}
+// 							}
+// 						},
+// 						else: function(fn){}
+// 					}
+// 				},
+// 				and: function(cond){
 
-				},
-				or: function(cond){
+// 				},
+// 				or: function(cond){
 
-				}
-			};
-		} else {
-			return {
-				then: function(fn){
-					log.autoFileGroup(trace);
-					console.log("%c" + trace.line + "%cif", groupStyles, "color: red; margin-left: 5px;", cond);
-					return {
-						elseIf: function(cond){
-							if (is.obj(cond) && cond.__cond){
-								// evaluate cond
-							} else {
-								if (cond){
-									return {
-										then: function(fn){
-											console.group('else if true');
-											fn();
-											console.groupEnd();
-										}
-									};
-								} else {
+// 				}
+// 			};
+// 		} else {
+// 			return {
+// 				then: function(fn){
+// 					log.autoFileGroup(trace);
+// 					console.log("%c" + trace.line + "%cif", groupStyles, "color: red; margin-left: 5px;", cond);
+// 					return {
+// 						elseIf: function(cond){
+// 							if (is.obj(cond) && cond.__cond){
+// 								// evaluate cond
+// 							} else {
+// 								if (cond){
+// 									return {
+// 										then: function(fn){
+// 											console.group('else if true');
+// 											fn();
+// 											console.groupEnd();
+// 										}
+// 									};
+// 								} else {
 
-								}
-							}
-						}
-					};
-				},
-				and: function(cond){
-					// doesn't matter if first cond is false, but we still need to capture else if and else...
-					return {
-						elseIf: function(){},
-						else: function(){}
-					}
-				},
-				or: function(){}
-			};
-		}
-	}
-};
+// 								}
+// 							}
+// 						}
+// 					};
+// 				},
+// 				and: function(cond){
+// 					// doesn't matter if first cond is false, but we still need to capture else if and else...
+// 					return {
+// 						elseIf: function(){},
+// 						else: function(){}
+// 					}
+// 				},
+// 				or: function(){}
+// 			};
+// 		}
+// 	}
+// };
 
 /* 
 
@@ -770,7 +758,7 @@ wrappedGlobalFunction = log.wrap(function wrappedGlozzzzbalFunction(){
 	log("fn ending");
 });
 
-globalFunction = log.wrap(function globalFunction(){
+globalFunction = xlog.wrap(function globalFunction(){
 	log('globalFunction, from log.js');
 	log("bt"); log(getBacktrace());
 	log.group('a group inside globalFunction', 1234, function(){});
@@ -787,6 +775,12 @@ globalFunction2 = function(){
 	log('whatup');
 	log.end();
 };
+
+globalFunction3 = log.wrap(function globalFunction3(){
+	log('globalFunction3');
+	utilsGlobalFunction();
+	log('globalFunction3');
+});
 
 
 })();

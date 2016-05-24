@@ -1,5 +1,19 @@
 ;(xlog.wrapx(function appjs(){
 
+$(function(){
+	log("weee, we're ready");
+	$(document).click(log.wrapx(function docClickHandler(){
+		log('this is my click handler');
+		log('something would probably happen in here...');
+		log('all functionality originating from this click handler will now be organized for your enjoyment');
+		myFunc(8, 9, 10);
+		log('yerrp');
+		globalFunction();
+		log('mm yea');
+	}));
+});
+
+
 myFunc = log.wrap(function myFunc(a, b, c){
 	log("inside myFunc, app.js");
 	return a + b;
@@ -57,9 +71,9 @@ globalFunction2();
 
 log("back to app.js");
 
-log.if(-1).then(function(){
-	log('yo');
-})
+// log.if(-1).then(function(){
+// 	log('yo');
+// })
 
 var a = log.wrap(function a(){
 	return true;
@@ -83,6 +97,22 @@ if ( (a() && c()) && (b() || !d())){
 var MyClass = log.wrap(function MyClass(){
 
 });
+
+var myObj = new MyClass();
+
+
+var testFn = log.wrap(function testFn(){
+	log('my test fn');
+	// globalFunction3();
+	utilJump();
+	// log('my test fn');
+});
+
+globalFunction4 = function(){
+	log('globalFunction4');
+};
+
+testFn();
 
 $(function(){
 

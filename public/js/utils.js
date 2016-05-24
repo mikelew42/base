@@ -191,6 +191,12 @@ var GetSet = utils.GetSet = sfn(function(){
 
 /* log */
 
+utilsGlobalFunction = function(){
+	log('utilsGlobalFunction');
+};
 
+utilJump = function(){
+	globalFunction3();
+};
 
 })();

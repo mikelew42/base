@@ -6,6 +6,15 @@
 	<link rel="stylesheet" href="css/styles.css">
 	<script src="js/log.js"></script>
 	<script src="js/jquery-2.1.4.js"></script>
+	<script>
+	$(function(){
+		log.closeAll();
+		log.group("document.ready");
+		setTimeout(function(){
+			log.closeAll();
+		}, 0);
+	});
+	</script>
 	<script src="js/utils.js"></script>
 	<script src="js/store.js"></script>
 	<script src="js/newmodtpl.js"></script>
@@ -14,6 +23,6 @@
 <body>
 	<a href="copy">copy</a>
 	<a href="module">module</a>
-	<i class="fa fa-beer"></i>
+	<a href="symstr">symstr</a>
 </body>
 </html>

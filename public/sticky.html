@@ -1,0 +1,433 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<script src="js/log2.js"></script>
+<script src="js/log.js"></script>
+<script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+<script>
+
+function getPBM($el, where){
+	if (typeof where !== 'string')
+		return;
+
+	return parseInt($el.css('padding-' + where).replace('px','')) + parseInt($el.css('margin-' + where).replace('px','')) + parseInt($el.css('border-' + where + '-width').replace('px',''));
+};
+
+function contentTopOffset($el){
+	return $el.offset().top + getPBM($el, 'top');
+};
+
+function contentBottomOffset($el){
+	return contentTopOffset($el) + $el.height();
+};
+
+(function($){
+
+	$.fn.height100 = function(settings){
+
+		var settings = $.extend({
+			excludeMargins: false
+		}, settings);
+
+		return this.each(function(){
+			var $self = $(this);
+
+			$(window).resize(function(){
+				var diff = $self.outerHeight(!settings.excludeMargins) - $self.height();
+				$self.height($self.parent().height() - diff);
+			}).resize();
+		});
+	};
+
+	$.fn.width100 = function(settings){
+
+		var settings = $.extend({
+			excludeMargins: false
+		}, settings);
+
+		return this.each(function(){
+			var $self = $(this);
+
+			$(window).on('resize.width100', function(){
+				var diff = $self.outerWidth(!settings.excludeMargins) - $self.width();
+				$self.width($self.parent().width() - diff);
+			}).resize();
+		});
+	};
+
+}(jQuery));
+
+(function($){
+	// todo
+	/*
+
+	 - back to top
+
+	 */
+	var globalInstance = 0
+	$.fn.sticky = log.wrap(function sticky(settings){
+		globalInstance++; // used for event namespacing
+
+		var settings = $.extend({
+				inheritWidth: true,
+				createPlaceholder: true,
+				log: false
+			}, settings),
+			bottom = function(){},
+			bottomThreshold,
+			subInstance = 0,
+			inheritWidth = settings.inheritWidth,
+			createPlaceholder = settings.createPlaceholder,
+			$navWrap,
+			$boundingBox;
+
+		if (settings.bottom && typeof settings.bottom === "function"){
+			bottom = settings.bottom;
+		}
+
+		if (settings.bottomThreshold){
+			if (typeof settings.bottomThreshold === "function"){
+				bottomThreshold = settings.bottomThreshold;
+			} else {
+				bottomThreshold = function(){
+					return bottomThreshold;
+				};
+			}
+		}
+
+		if (settings.$navWrap){
+			$navWrap = settings.$navWrap;
+		}
+
+		if (settings.$boundingBox){
+			$boundingBox = settings.$boundingBox;
+		}
+
+		return this.each(log.wrap(function each(){
+			subInstance++; // used for event namespacing
+
+			var
+
+			// jQuery elements
+				$self = $(this),
+				$placeholder,
+
+			// properties
+				stickyStart,
+				actualBottomThreshold = 0,
+				fixedScrollStart,
+				windowHeight,
+				scrollTop,
+				stickyOuterHeight,
+				overflowing,
+				originalBottom,
+
+			// functions
+				onScroll,
+				resize,
+				init,
+				clearAll,
+				stick,
+				stickToBottom,
+				stickToTop,
+				thresholdCheck,
+				threshold;
+
+
+
+			// this is called at the bottom of this plugin definition
+			init = function(){
+
+				$(document).off('scroll.sticky' + globalInstance + subInstance);
+				$(window).off('resize.sticky' + globalInstance + subInstance);
+
+				stickyStart = $self.offset().top;
+
+				if (createPlaceholder){
+					$placeholder = $(document.createElement('div')).addClass('sticky-placeholder').width($self.outerWidth()).height($self.outerHeight()).hide().insertBefore($self);
+					$self.on('stickyOn', function(){ $placeholder.show(); }).on('stickyOff', function(){ $placeholder.hide(); });
+				}
+
+				if (inheritWidth){
+					$self.width100();
+				}
+
+				$(window).on('resize.sticky' + globalInstance + subInstance, resize).resize();
+				$(document).on('scroll.sticky' + globalInstance + subInstance, onScroll).scroll();
+			};
+
+
+			resize = function(){
+
+				if (createPlaceholder){
+					$placeholder.width($self.outerWidth()).height($self.outerHeight());
+				}
+
+				stickyOuterHeight = $self.outerHeight(true);
+				stickyStart = $self.parent().offset().top;
+				if ($self.parent().css('padding-top')){
+					stickyStart = stickyStart + parseInt($self.parent().css('padding-top').replace('px',''));
+				}
+				originalBottom = stickyStart + stickyOuterHeight;
+				windowHeight = $(window).height();
+				scrollTop = $(document).scrollTop();
+
+				overflowing = stickyOuterHeight > windowHeight;
+
+				if ($boundingBox){
+					actualBottomThreshold = contentBottomOffset($boundingBox);
+				} else if ($navWrap){
+					actualBottomThreshold = contentBottomOffset($navWrap) - $(window).height() / 2;
+				} else if (bottomThreshold){
+					actualBottomThreshold = bottomThreshold();
+				}
+
+				if(overflowing){
+					thresholdCheck = function(){
+						return actualBottomThreshold && (scrollTop + windowHeight) >= actualBottomThreshold;
+					};
+					fixedScrollStart = originalBottom - windowHeight; // go sticky when scrollTop > this value, or when the windowBottom > originalBottom
+					stick = stickToBottom;
+				} else {
+					thresholdCheck = function(){
+						return actualBottomThreshold && (scrollTop + stickyOuterHeight) >= actualBottomThreshold;
+					};
+					fixedScrollStart = stickyStart; // go sticky when scrollTop >
+					stick = stickToTop;
+				}
+
+				$(document).scroll();
+			};
+
+			/*
+			* threshold is triggered once the tresholdCheck passes
+			*
+			* I should package the boundingBox functionality and the navWrap functionality
+			* They can share functions inside the same closure, but should be 2 different objects, to not confuse things
+			* */
+			threshold = function(){
+				if ($boundingBox){
+					if ($boundingBox.css('position') === 'static'){
+						$boundingBox.css('position', 'relative');}
+
+					if (!$self.hasClass('sticky-abs sticky')){
+						$self.removeClass('sticky-bottom sticky-top').addClass('sticky-abs sticky');
+						$self.trigger('stickyOn').trigger('stickyToggle');
+					}
+				} else if ($navWrap){
+					console.log('threshold');
+					/* Scroll down/up really fast to see the change  */
+
+					/*
+					*  Every time the threshold is met, which might happen very rapidly in succession,
+					*  we check for this fading class.  The first pass, it shouldn't have the fading class,
+					*  and so we add it, fadeOut, and then listen for the stickyOn event.
+					* */
+					if (!$self.hasClass('sticky-faded')){
+						console.log('!sticky-faded');
+
+						// stop animating
+						$self.stop(true,true)
+							// switch into animation mode
+							.addClass('sticky-faded')
+							// trigger animation
+							.fadeOut()
+							// refresh fade event
+							.off('stickyOn.navFade').on('stickyOn.navFade', function(){
+								console.log('stickyOn.navFade');
+
+								// stop animation
+								$self.stop(true, true)
+									// leave animation mode
+									.removeClass('sticky-faded')
+									// fade in
+									.fadeIn()
+									// remove this handler
+									.off('stickyOn.navFade');
+						});
+					} else {
+						console.log('has sticky-faded');
+					}
+				} else {
+					clearAll();
+				}
+			};
+
+			onScroll = function(){
+				scrollTop = $(document).scrollTop();
+
+				if (scrollTop >= fixedScrollStart){
+					if (thresholdCheck()){
+						threshold();
+					} else {
+						stick();
+					}
+				} else {
+					clearAll();
+				}
+			};
+
+			stickToTop = function(){
+				console.log('stickToTop');
+				$self.removeClass('sticky-bottom sticky-abs').addClass('sticky-top sticky');
+				$self.trigger('stickyToggle').trigger('stickyOn');
+			};
+
+			stickToBottom = function(){
+				console.log('stickToBottom');
+				$self.removeClass('sticky-top sticky-abs').addClass('sticky-bottom sticky');
+				$self.trigger('stickyToggle').trigger('stickyOn');
+			};
+
+			clearAll = function(){
+				$self.removeClass('sticky-top sticky-abs sticky-bottom sticky');
+				$self.trigger('stickyOff').trigger('stickyToggle');
+			};
+
+			init();
+		}));
+	});
+}(jQuery));
+
+$(document).ready(function(){
+
+	$('.nav').sticky({$navWrap: $('.main')});
+	// console.log(log.currentGroup);
+	$('.sidebar1').sticky({$boundingBox: $('.main')});
+	$('.sidebar2').sticky({$boundingBox: $('.main')});
+});
+
+</script>
+<style>
+	* { margin: 0; padding: 0; }
+	.wrap { width: 80%; margin: 0 auto; }
+	.above { height: 300px; background: #eee; }
+	.fixed { position: fixed; }
+	.main { height: 1800px; }
+
+	.nav { list-style: none; padding: 8px 13px; background: #555;}
+	.nav li { float: left; background: #333; color: #fff; margin-right: 10px; padding: 8px 13px; }
+	.nav li.clear { float: none; padding: 0; }
+
+	.left { float: left; }
+	.right { float: right; }
+
+	.main .left { width: 60%; }
+	.main .right { width: 20%; }
+
+	.footer { background: #eee; padding-bottom: 900px; }
+
+	.sticky-bottom { position: fixed; bottom: 0px; }
+	.sticky-top { position: fixed; top: 0px; }
+	.sticky-abs { position: absolute; bottom: 0px; }
+
+	.clear { clear: both; }
+
+	.sidebar1 { background: #fff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+	<div class="above">
+		<div>Above the foldAbove the foldAbove the foldAbove the foldAbove the foldAbove the foldAbove the foldAbove the foldAbove the fold
+			Above the foldAbove the foldAbove the foldAbove the foldAbove the foldAbove the foldAbove the foldAbove the foldAbove the foldAbove the foldAbove the foldAbove the foldAbove the foldAbove the fold
+			Above the foldAbove the fold</div>
+	</div>
+	<div class="main">
+		<div class="left">
+			<div>
+				Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+			</div>
+			<div class="nav-wrap">
+				<ul class="nav">
+					<li class="one">One</li>
+					<li class="two">Two</li>
+					<li>Three</li>
+					<li class="clear"></li>
+				</ul>
+			</div>
+			<p>
+				Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+			</p>
+			<p>
+				Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+			</p>				<p>
+				Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+			</p>
+			<p>
+				Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+			</p>
+		</div>
+		<div class="right">
+			<div class="sidebar1">
+				<p>
+					Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb.  Maurizzle check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+					dictumst. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+				</p>
+			</div>
+			<div class="sidebar3">
+				<p>
+					Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb.  Maurizzle check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+					dictumst. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+				</p>
+			</div>
+			<div class="sidebar3">
+				<p>
+					Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb.  Maurizzle check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+					dictumst. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+				</p>
+			</div>
+
+		</div>
+		<div class="right">
+			<div class="sidebar2">
+				<p>
+					Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+					gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+					check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+					dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+				</p>
+				<p>
+					Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+					gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+					check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+					dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+				</p>
+
+			</div>
+		</div>
+		<div class="clear"></div>
+	</div>
+	<div class="footer">
+		Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+		gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+		check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+		dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+		Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+		gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+		check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+		dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+		Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+		gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+		check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+		dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+	</div>
+</div>
+</body>
+</html>
