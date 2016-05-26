@@ -7,6 +7,120 @@
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
 <script>
 
+(function($){
+
+	var css = {
+		background: "black",
+		fontSize: "11px",
+		position: "fixed"
+	};
+
+	$.extend({
+		guide: function(options){
+			var $x = $("<div>").addClass('px-guide-x').css(css).css({
+				width: "1px",
+				top: 0, bottom: 0,
+				left: options.x
+			}), 
+			$y = $("<div>").addClass('px-guide-y').css(css).css({
+				height: "1px",
+				left: 0, right: 0,
+				top: options.y
+			});
+			return $x.add($y).appendTo("body");
+		}
+	})
+
+	$(document).ready(function(){
+		// initGuideCSS();
+
+		var $guide1 = $.guide({ x: 100, y: 100 }).css("background", "orange");
+	});
+
+	function initGuideCSS(){
+		$(document.createElement('style')).html(
+			".px-guide { background: black; font-size: 11px; }" +
+			".h-px-guide { height: 1px; width: 100%; position: absolute; top: 50%; } " +
+			".v-px-guide { width: 1px; height: 100%; position: absolute; left: 50%; } "
+			).appendTo('head');
+	}
+
+	_pxGuide = {
+		init: function(options){
+			this.render();
+			if (typeof options !== "undefined")
+				this.update(options);
+			return this;
+		},
+		render: function(){
+			this.$el =
+				$(document.createElement('div'))
+					.addClass('px-guide')
+					.appendTo(
+						$("body")
+					);
+		},
+		update: function(options){
+			if (!this.$el)
+				this.render();
+
+			if (typeof options.x !== "undefined"){
+				this.verticalGuide(options.x);
+			} else if (typeof options.y !== "undefined"){
+				this.horizontalGuide(options.y);
+			}
+		},
+		verticalGuide: function(x){
+			this.$el.css('left', x).removeClass('h-px-guide').addClass('v-px-guide');
+		},
+		horizontalGuide: function(y){
+			this.$el.css('top', y).removeClass('v-px-guide').addClass('h-px-guide');
+		}
+	};
+
+	_crosshairs = {
+		init: function(options){
+			this.render();
+			if (typeof options !== "undefined")
+				this.update(options);
+			return this;
+		},
+		render: function(){
+			this.hGuide = pxGuide();
+			this.vGuide = pxGuide();
+			this.hGuide.render();
+			this.vGuide.render();
+			this.$h = this.hGuide.$el;
+			this.$v = this.vGuide.$el;
+			this.$both = $([this.hGuide.$el[0], this.vGuide.$el[0]]);
+		},
+		text: function(text){
+			this.$h.html(text);
+		},
+		update: function(options){
+			if (!this.hGuide || !this.vGuide)
+				this.render();
+
+			if (typeof options === "undefined")
+				return false;
+
+			if (typeof options.x !== "undefined")
+				this.vGuide.update({ x: options.x });
+
+			if (typeof options.y !== "undefined")
+				this.hGuide.update({ y: options.y });
+		}
+	};
+
+	window.pxGuide = function(options){
+		return Object.create(_pxGuide).init(options);
+	};
+
+	window.crosshairs = function(options){
+		return Object.create(_crosshairs).init(options);
+	};
+})(jQuery);
+
 function getPBM($el, where){
 	if (typeof where !== 'string')
 		return;
@@ -27,32 +141,45 @@ function contentBottomOffset($el){
 	$.fn.height100 = function(settings){
 
 		var settings = $.extend({
-			excludeMargins: false
+			includeMargins: true,
+			initialResize
 		}, settings);
 
 		return this.each(function(){
-			var $self = $(this);
+			var $self = $(this),
+				update = function height100(){
+					$self.height(
+						$self.parent().height() - 
+						$self.outerHeight(settings.includeMargins) +
+						$self.height()
+					);
+				};
 
 			$(window).resize(function(){
-				var diff = $self.outerHeight(!settings.excludeMargins) - $self.height();
+				var diff = $self.outerHeight(settings.includeMargins) - $self.height();
 				$self.height($self.parent().height() - diff);
-			}).resize();
+			})  //.resize();
 		});
 	};
 
 	$.fn.width100 = function(settings){
 
 		var settings = $.extend({
-			excludeMargins: false
+			includeMargins: true,
+			initialResize: true
 		}, settings);
 
 		return this.each(function(){
 			var $self = $(this);
 
-			$(window).on('resize.width100', function(){
-				var diff = $self.outerWidth(!settings.excludeMargins) - $self.width();
+			$(window).on('resize.width100', log.cb(function resizeWidth100(){
+				log.var("$self", $self);
+				var diff = $self.outerWidth(settings.includeMargins) - $self.width();
 				$self.width($self.parent().width() - diff);
-			}).resize();
+			}) )
+
+			if (settings.initialResize)
+				$(window).resize();
 		});
 	};
 
@@ -66,7 +193,7 @@ function contentBottomOffset($el){
 
 	 */
 	var globalInstance = 0
-	$.fn.sticky = log.wrap(function sticky(settings){
+	$.fn.sticky = log.wrapx(function sticky(settings){
 		globalInstance++; // used for event namespacing
 
 		var settings = $.extend({
@@ -104,8 +231,15 @@ function contentBottomOffset($el){
 			$boundingBox = settings.$boundingBox;
 		}
 
-		return this.each(log.wrap(function each(){
+		log('settings', settings);
+
+		return this.each(xlog.cbx(function each(){
 			subInstance++; // used for event namespacing
+
+			xlog.var('globalInstance', globalInstance);
+			xlog.var('subInstance', subInstance);
+
+			log.group('globalInstance', globalInstance, 'subInstance', subInstance);
 
 			var
 
@@ -137,35 +271,55 @@ function contentBottomOffset($el){
 
 
 			// this is called at the bottom of this plugin definition
-			init = function(){
+			init = log.wrapx(function init(){
 
-				$(document).off('scroll.sticky' + globalInstance + subInstance);
-				$(window).off('resize.sticky' + globalInstance + subInstance);
+				log.groupc('event names');
+				$(document).off( log('scroll.sticky' + globalInstance + subInstance) );
+				$(window).off( log('resize.sticky' + globalInstance + subInstance) );
+				log.end();
 
-				stickyStart = $self.offset().top;
+				stickyStart = log.var('stickyStart', $self.offset().top);
 
-				if (createPlaceholder){
-					$placeholder = $(document.createElement('div')).addClass('sticky-placeholder').width($self.outerWidth()).height($self.outerHeight()).hide().insertBefore($self);
-					$self.on('stickyOn', function(){ $placeholder.show(); }).on('stickyOff', function(){ $placeholder.hide(); });
+				if ( createPlaceholder ){
+					log.groupc('$placeholder');
+					$placeholder = $("<div>")
+							.addClass('sticky-placeholder')
+							.width(log.var('width', $self.outerWidth()) )
+							.height(log.var('outerHeight', $self.outerHeight()) )
+							.hide()
+							.insertBefore($self);
+
+					$self.on('stickyOn', log.cb(function stickyOnCB(){
+						log(globalInstance + '.stickyOn event --> $placeholder.show()');
+						$placeholder.show();
+					}) ).on('stickyOff', xlog.cbx(function stickyOffCB(){
+						// console.trace();
+						log(globalInstance + '.stickyOff event --> $placeholder.hide()');
+						$placeholder.hide(); 
+					}) );
+
+					log.end();
 				}
 
 				if (inheritWidth){
-					$self.width100();
+					$self.width100({ initialResize: false });
 				}
 
 				$(window).on('resize.sticky' + globalInstance + subInstance, resize).resize();
 				$(document).on('scroll.sticky' + globalInstance + subInstance, onScroll).scroll();
-			};
+			});
 
 
 			resize = function(){
 
+				// resize placeholder to match self 
 				if (createPlaceholder){
-					$placeholder.width($self.outerWidth()).height($self.outerHeight());
+					$placeholder.width($self.outerWidth(true)).height($self.outerHeight(true));
 				}
 
 				stickyOuterHeight = $self.outerHeight(true);
 				stickyStart = $self.parent().offset().top;
+				log.var('stickyStart', stickyStart);
 				if ($self.parent().css('padding-top')){
 					stickyStart = stickyStart + parseInt($self.parent().css('padding-top').replace('px',''));
 				}
@@ -286,6 +440,8 @@ function contentBottomOffset($el){
 			};
 
 			init();
+
+			log.end();
 		}));
 	});
 }(jQuery));
@@ -294,26 +450,26 @@ $(document).ready(function(){
 
 	$('.nav').sticky({$navWrap: $('.main')});
 	// console.log(log.currentGroup);
-	$('.sidebar1').sticky({$boundingBox: $('.main')});
-	$('.sidebar2').sticky({$boundingBox: $('.main')});
-});
+	// $('.sidebar1').sticky({$boundingBox: $('.main')});
+	// $('.sidebar2').sticky({$boundingBox: $('.main')});
 
+});
 </script>
 <style>
 	* { margin: 0; padding: 0; }
 	.wrap { width: 80%; margin: 0 auto; }
 	.above { height: 300px; background: #eee; }
 	.fixed { position: fixed; }
-	.main { height: 1800px; }
+	.main { }
 
 	.nav { list-style: none; padding: 8px 13px; background: #555;}
-	.nav li { float: left; background: #333; color: #fff; margin-right: 10px; padding: 8px 13px; }
+	.nav li { float: left; background: #333; color: #fff; margin-right: 10px; padding: 8px 13px; cursor: pointer; }
 	.nav li.clear { float: none; padding: 0; }
 
 	.left { float: left; }
 	.right { float: right; }
 
-	.main .left { width: 60%; }
+	.main .left { width: 60%; border: 10px solid #ddd; padding: 10px; box-sizing: border-box;}
 	.main .right { width: 20%; }
 
 	.footer { background: #eee; padding-bottom: 900px; }
@@ -372,7 +528,62 @@ $(document).ready(function(){
 				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
 				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
 				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+			</p>			
+			<p>
+				Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
 			</p>
+			<p>
+				Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+			</p>
+			<p>
+				Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+			</p>
+			<p>
+				Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+			</p>
+			<p>
+				Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+			</p>
+			<p>
+				Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+			</p>
+			<p>
+				Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+			</p>
+			<p>
+				Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+			</p>
+			<p>
+				Lorem ipsum for sure we gonna chung amizzle, pizzle fo shizzle da bomb. Nullizzle sapizzle velit, check it out volutpizzle, suscipizzle quis,
+				gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
+				check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
+				dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+			</p>
+
 		</div>
 		<div class="right">
 			<div class="sidebar1">
@@ -427,6 +638,11 @@ $(document).ready(function(){
 		gravida vizzle, owned. Gangsta gizzle tortizzle. Sizzle shiznit. Boom shackalack izzle dolizzle check out this turpis sure fizzle. Maurizzle
 		check it out nibh et turpizzle. Get down get down izzle tortor. Pellentesque for sure izzle break yo neck, yall. Crazy hac habitasse platea
 		dictumst. I'm in the shizzle dapibizzle. Gizzle tellizzle cool, pretizzle the bizzle, brizzle izzle, yippiyo vitae, for sure. Ass suscipizzle. Integer semper velit gangsta.
+		<h1>Requirements</h1>
+		<ul>
+			<li>Must load properly no matter the scroll position (for example, if you refresh the page while at the bottom.</li>
+			<li>Sidebars must work properly whether they are smaller or longer than window</li>
+		</ul>
 	</div>
 </div>
 </body>
