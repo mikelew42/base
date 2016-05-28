@@ -2,9 +2,30 @@
 <!DOCTYPE html>
 <html>
 <head>
-<script src="js/log2.js"></script>
 <script src="js/log.js"></script>
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+<script>
+$(function(){
+	if (log.currentGroup.type === "root"){
+		log.rgroup("document.ready");
+		setTimeout(function(){
+			log.end();
+		}, 0);
+	}
+});
+</script>
+<script>
+$(function(){
+	$(window).resize(function(){
+		if (log.currentGroup.type === "root"){
+			log.rgroup("window.resize");
+			setTimeout(function(){
+				log.end();
+			}, 0);
+		}
+	});
+});
+</script>
 <script>
 
 (function($){
@@ -19,22 +40,51 @@
 		guide: function(options){
 			var $x = $("<div>").addClass('px-guide-x').css(css).css({
 				width: "1px",
-				top: 0, bottom: 0,
-				left: options.x
+				top: 0, bottom: 0
 			}), 
 			$y = $("<div>").addClass('px-guide-y').css(css).css({
 				height: "1px",
-				left: 0, right: 0,
-				top: options.y
-			});
-			return $x.add($y).appendTo("body");
+				left: 0, right: 0
+			}),
+			$guides = $x.add($y).appendTo("body");
+
+			$guides.$x = $x;
+			$guides.$y = $y;
+
+			$guides.x = function(x){
+				// undefined or false will hide
+				if (typeof x !== 'number'){
+					this.$x.hide();
+				} else {
+					this.$x.show();
+					this.$x.css('left', x);
+				}
+
+				return this;
+			};
+
+			$guides.y = function(y){
+				if (typeof y !== 'number'){
+					this.$y.hide();
+				} else {
+					this.$y.show();
+					this.$y.css('top', y);
+				}
+
+				return this;
+			}
+
+			$guides.x(options.x);
+			$guides.y(options.y);
+
+			return $guides;
 		}
 	})
 
 	$(document).ready(function(){
 		// initGuideCSS();
 
-		var $guide1 = $.guide({ x: 100, y: 100 }).css("background", "orange");
+		// var $guide1 = $.guide({ x: 100, y: 100 }).css("background", "orange");
 	});
 
 	function initGuideCSS(){
@@ -172,10 +222,11 @@ function contentBottomOffset($el){
 		return this.each(function(){
 			var $self = $(this);
 
-			$(window).on('resize.width100', log.cb(function resizeWidth100(){
+			$(window).on('resize.width100', log.cbc(function resizeWidth100(){
 				log.var("$self", $self);
 				var diff = $self.outerWidth(settings.includeMargins) - $self.width();
 				$self.width($self.parent().width() - diff);
+				log('globalInstance' + settings.globalInstance);
 			}) )
 
 			if (settings.initialResize)
@@ -193,7 +244,7 @@ function contentBottomOffset($el){
 
 	 */
 	var globalInstance = 0
-	$.fn.sticky = log.wrapx(function sticky(settings){
+	$.fn.sticky = log.wrap(function sticky(settings){
 		globalInstance++; // used for event namespacing
 
 		var settings = $.extend({
@@ -207,7 +258,8 @@ function contentBottomOffset($el){
 			inheritWidth = settings.inheritWidth,
 			createPlaceholder = settings.createPlaceholder,
 			$navWrap,
-			$boundingBox;
+			$boundingBox,
+			thisInstance = globalInstance;
 
 		if (settings.bottom && typeof settings.bottom === "function"){
 			bottom = settings.bottom;
@@ -233,13 +285,13 @@ function contentBottomOffset($el){
 
 		log('settings', settings);
 
-		return this.each(xlog.cbx(function each(){
+		return this.each(xlog.cbc(function each(){
 			subInstance++; // used for event namespacing
 
-			xlog.var('globalInstance', globalInstance);
+			xlog.var('thisInstance', thisInstance);
 			xlog.var('subInstance', subInstance);
 
-			log.group('globalInstance', globalInstance, 'subInstance', subInstance);
+			log.group('thisInstance', thisInstance, 'subInstance', subInstance);
 
 			var
 
@@ -271,11 +323,11 @@ function contentBottomOffset($el){
 
 
 			// this is called at the bottom of this plugin definition
-			init = log.wrapx(function init(){
+			init = function init(){
 
 				log.groupc('event names');
-				$(document).off( log('scroll.sticky' + globalInstance + subInstance) );
-				$(window).off( log('resize.sticky' + globalInstance + subInstance) );
+				$(document).off( log('scroll.sticky' + thisInstance + subInstance) );
+				$(window).off( log('resize.sticky' + thisInstance + subInstance) );
 				log.end();
 
 				stickyStart = log.var('stickyStart', $self.offset().top);
@@ -289,12 +341,12 @@ function contentBottomOffset($el){
 							.hide()
 							.insertBefore($self);
 
-					$self.on('stickyOn', log.cb(function stickyOnCB(){
-						log(globalInstance + '.stickyOn event --> $placeholder.show()');
+					$self.on('stickyOn', log.cbc(function stickyOnCB(){
+						log(thisInstance + '.stickyOn event --> $placeholder.show()');
 						$placeholder.show();
-					}) ).on('stickyOff', xlog.cbx(function stickyOffCB(){
+					}) ).on('stickyOff', log.cbc(function stickyOffCB(){
 						// console.trace();
-						log(globalInstance + '.stickyOff event --> $placeholder.hide()');
+						log(thisInstance + '.stickyOff event --> $placeholder.hide()');
 						$placeholder.hide(); 
 					}) );
 
@@ -302,15 +354,15 @@ function contentBottomOffset($el){
 				}
 
 				if (inheritWidth){
-					$self.width100({ initialResize: false });
+					$self.width100({ initialResize: false, globalInstance: globalInstance });
 				}
 
 				$(window).on('resize.sticky' + globalInstance + subInstance, resize).resize();
 				$(document).on('scroll.sticky' + globalInstance + subInstance, onScroll).scroll();
-			});
+			};
 
 
-			resize = function(){
+			resize = log.cbc(function resize(){
 
 				// resize placeholder to match self 
 				if (createPlaceholder){
@@ -352,7 +404,7 @@ function contentBottomOffset($el){
 				}
 
 				$(document).scroll();
-			};
+			});
 
 			/*
 			* threshold is triggered once the tresholdCheck passes
@@ -449,9 +501,8 @@ function contentBottomOffset($el){
 $(document).ready(function(){
 
 	$('.nav').sticky({$navWrap: $('.main')});
-	// console.log(log.currentGroup);
-	// $('.sidebar1').sticky({$boundingBox: $('.main')});
-	// $('.sidebar2').sticky({$boundingBox: $('.main')});
+	$('.sidebar1').sticky({$boundingBox: $('.main')});
+	$('.sidebar2').sticky({$boundingBox: $('.main')});
 
 });
 </script>

@@ -135,16 +135,25 @@ log.var = function(name, val){
 };
 xlog.var = function(name, val){ return val; };
 
+var styles = {
+	margin: "margin-left: -2px;",
+	padding: "padding: 3px 5px 2px;",
+	border: "border-bottom: 1px solid #ddd;",
+	background: "background: #eee;",
+	line: "line-height: 16px;",
+	indent: "12px"
+}
+
 /* TODO
 This needs to be coordinated with other margins, but the indentation value
 could be dramatically changed for better grouping clarity.  Maybe its a function of depth, so
 as depth increases, the indentation decreases, to avoid running off the page. */
 var groupStyles = 
-	"margin-left: -8px; \
-	padding: 3px 5px 2px; \
-	border-bottom: 1px solid #ddd; \
-	background: #eee; \
-	line-height: 16px;";
+	styles.margin + 
+	styles.padding + 
+	styles.border + 
+	styles.background + 
+	styles.line;
 
 log.end = function(){
 	if (!log.log)
@@ -156,7 +165,7 @@ log.end = function(){
 			// auto groups might happen within a user group.
 			// other groups might remain open on accident
 			// a better way to try and resolve this nesting might be in order.
-		console.error("try closing twice?");
+		// console.error("try closing twice?");
 		log.currentGroup.close();
 		log.currentGroup.close();
 	}
@@ -188,6 +197,7 @@ Log.prototype = Object.create(Base.prototype);
 
 Log.prototype.assign({
 	method: "log",
+	afg: true,
 	initialize: function(){
 		this.autoFileGroup();
 		this.log(this.args());
@@ -195,7 +205,7 @@ Log.prototype.assign({
 	autoFileGroup: function(){
 		var p = false, a = false, b = false;
 
-		if (log.currentFile !== this.trace.file) {
+		if (this.afg && (log.currentFile !== this.trace.file)) {
 			p = true;
 			// console.log(true, "file mismatch, current file: ", log.currentFile, "!== new file:", this.trace.file);
 
@@ -356,6 +366,22 @@ Cleanup groups with timeout?
 		}
 	};
 
+	log.rgroup = function(name){
+		var ret;
+		if (!log.log)
+			return name;
+
+		ret = log.add(new Group({
+			trace: getBacktrace()[2],
+			type: "user",
+			arguments: arguments,
+			afg: false,
+			method: "groupCollapsed"
+		}));
+
+		return ret;
+	};
+
 
 /* * * * * * * * * * *
  *  FILE GROUP
@@ -385,11 +411,12 @@ Make sure to pass lastFile (which should be log.currentFile)
 			// console.log("%c================= end file group =======================\r\n \r\n ", "color: #006622");
 		},
 		customArgs: function(){
-			this._args.unshift("%c"+ this.trace.file, groupStyles);
+			this._args.unshift("%c📄 " +  this.trace.file, "padding: 3px 7px 2px; font-size: 13px; line-height: 18px;" + styles.border + styles.background + "margin-left: " + styles.indent);
 		},
 		close: function(auto){
 			if (this.open){
 				if (this === log.currentGroup){
+					console.log("%c", "line-height: 2px;");
 					console.groupEnd();
 					// console.log('closed file group: ' + this.trace.file);
 					log.currentFile = this.lastFile;
@@ -441,14 +468,18 @@ Blah
 	 			if (!this.def.expand)
 	 				this.method = "groupCollapsed";
 
- 				!this.def.anonymous && this.autoFileGroup();
+ 				!this.def.cb && this.autoFileGroup();
  				
- 				if (this.def.anonymous){
- 					if (!log.currentFile || (this.def.trace.file !== log.currentFile)){
- 						log.add(new FileGroup({
- 							trace: this.def.trace,
- 							lastFile: log.currentFile
- 						}));
+ 				if (this.def.cb){
+ 					if (this.def.trace.file !== log.currentFile){
+ 						if (log.currentGroup.type === "file")
+ 							log.currentGroup.close();
+ 						if (this.def.trace.file !== log.currentFile){
+							log.add(new FileGroup({
+								trace: this.def.trace,
+								lastFile: log.currentFile
+							}));
+ 						}
  					}
  				}
 
@@ -471,7 +502,7 @@ Blah
  				else
  					console.error("log.ret attempting to close non-function group", log.currentGroup);
  				// console.groupEnd();
- 				console.log('%creturn', groupStyles + "margin-left: 6px", this.returnValue);
+ 				console.log('%creturn', groupStyles + "margin-left: " + styles.indent, this.returnValue);
  			} else {
  				if (this.logUndefinedReturnValue)
  					console.log('%creturn', groupStyles, this.returnValue);
@@ -500,7 +531,7 @@ Blah
  			if (this._args){
  				return this._args;
  			} else {
- 				if (this.def.anonymous)
+ 				if (this.def.cb)
  					line = this.def.line;
  				else
  					line = this.trace.line;
@@ -530,7 +561,7 @@ Blah
 	 				// console.log("closed fn group: ", this.name);
 	 				this.open = false;
 	 				
-	 				if (this.def.anonymous)
+	 				if (this.def.cb)
 	 					log.currentFile = this.def.file;
 	 				else
 	 					log.currentFile = this.trace.file;
@@ -593,48 +624,52 @@ log.wrap = function(fn){
 		return fn;
 	var def = new FunctionDefinition({
 		trace: getBacktrace()[2],
-		fn: fn
+		fn: fn,
+		arguments: arguments,
+		expand: true
 	});
 	return def.wrapper();
 };
 xlog.wrap = function(fn){ return fn; }
 
-log.wrapx = function(fn){
+log.wrapc = function(fn){
 	if (!log.log)
 		return fn;
 	var def = new FunctionDefinition({
 		trace: getBacktrace()[2],
 		fn: fn,
-		expand: true
+		arguments: arguments
 	});
 	return def.wrapper();
 }
-xlog.wrapx = function(fn){ return fn;}
+xlog.wrapc = function(fn){ return fn;}
 
 log.cb = function(cb){
 	if (!log.log)
 		return cb;
 	var def = new FunctionDefinition({
-		anonymous: true,
+		cb: true,
 		trace: getBacktrace()[2],
-		fn: cb
+		fn: cb,
+		arguments: arguments,
+		expand: true
 	});
 	return def.wrapper();
 };
 xlog.cb = function(cb){ return cb; };
 
-log.cbx = function(cb){
+log.cbc = function(cb){
 	if (!log.log)
 		return cb;
 	var def = new FunctionDefinition({
-		anonymous: true,
+		cb: true,
 		trace: getBacktrace()[2],
 		fn: cb,
-		expand: true
+		arguments: arguments
 	});
 	return def.wrapper();
 };
-xlog.cbx = function(cb){ return cb; };
+xlog.cbc = function(cb){ return cb; };
 
 
 
@@ -654,7 +689,7 @@ log.cond = function(value){
 
 
 
-wrappedGlobalFunction = log.wrap(function wrappedGlozzzzbalFunction(){
+wrappedGlobalFunction = log.wrapc(function wrappedGlozzzzbalFunction(){
 	log("wrappedGlobalFunction in log.js");
 	globalFunction();
 	log("calling myFunc in app.js");
@@ -662,7 +697,7 @@ wrappedGlobalFunction = log.wrap(function wrappedGlozzzzbalFunction(){
 	log("fn ending");
 });
 
-globalFunction = xlog.wrap(function globalFunction(){
+globalFunction = xlog.wrapc(function globalFunction(){
 	log('globalFunction, from log.js');
 	log("bt"); log(getBacktrace());
 	log.group('a group inside globalFunction', 1234, function(){});
@@ -680,7 +715,7 @@ globalFunction2 = function(){
 	log.end();
 };
 
-globalFunction3 = log.wrap(function globalFunction3(){
+globalFunction3 = log.wrapc(function globalFunction3(){
 	log('globalFunction3');
 	utilsGlobalFunction();
 	log('globalFunction3');

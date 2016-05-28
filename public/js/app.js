@@ -1,8 +1,8 @@
-;(xlog.wrapx(function appjs(){
+;(xlog.wrap(function appjs(){
 
 $(function(){
 	log("weee, we're ready");
-	$(document).click(log.wrapx(function docClickHandler(){
+	$(document).click(log.wrapc(function docClickHandler(){
 		log('this is my click handler');
 		log('something would probably happen in here...');
 		log('all functionality originating from this click handler will now be organized for your enjoyment');
@@ -22,7 +22,7 @@ myFunc = log.wrap(function myFunc(a, b, c){
 log('yo');
 log();
 
-var anotherFunc = log.wrap(function anotherFunc(){
+var anotherFunc = log.wrapc(function anotherFunc(){
 	return myFunc(1, 2) + myFunc(3, 4) * myFunc(5, 6);
 }); 
 
@@ -75,17 +75,17 @@ log("back to app.js");
 // 	log('yo');
 // })
 
-var a = log.wrap(function a(){
+var a = log.wrapc(function a(){
 	return true;
 });
-var c = log.wrap(function c(){
+var c = log.wrapc(function c(){
 	return true;
 });
 
-var b = log.wrap(function b(){
+var b = log.wrapc(function b(){
 	return false;
 });
-var d = log.wrap(function d(){
+var d = log.wrapc(function d(){
 	return false;
 });
 
@@ -94,7 +94,7 @@ if ( (a() && c()) && (b() || !d())){
 }
 
 
-var MyClass = log.wrap(function MyClass(){
+var MyClass = log.wrapc(function MyClass(){
 
 });
 
