@@ -5,7 +5,7 @@
 <script src="js/log.js"></script>
 <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
 <script>
-$(function(){
+$(document).ready(function(){
 	if (log.currentGroup.type === "root"){
 		log.rgroup("document.ready");
 		setTimeout(function(){
@@ -13,18 +13,33 @@ $(function(){
 		}, 0);
 	}
 });
-</script>
-<script>
-$(function(){
-	$(window).resize(function(){
-		if (log.currentGroup.type === "root"){
-			log.rgroup("window.resize");
-			setTimeout(function(){
-				log.end();
-			}, 0);
-		}
-	});
+$(window).load(function(){
+	// if (log.currentGroup.type === "root"){
+		log.rgroup("window.load");
+		setTimeout(function(){
+			log.end();
+		}, 0);
+	// }
 });
+$(window).resize(function(){
+	if (log.currentGroup.type === "root"){
+		log.rgroup("window.resize");
+		setTimeout(function(){
+			log.end();
+		}, 0);
+	}
+});
+
+$(document).scroll(function(){
+	// if (log.currentGroup.type === "root"){
+		log.rgroup("document.scroll");
+		setTimeout(function(){ log.end() }, 0);
+	// }
+});
+
+log.closureGroup({ name: "test" }, function(){
+	log('yo');
+})
 </script>
 <script>
 
@@ -222,11 +237,11 @@ function contentBottomOffset($el){
 		return this.each(function(){
 			var $self = $(this);
 
-			$(window).on('resize.width100', log.cbc(function resizeWidth100(){
+			$(window).on('resize.width100', log.cbc(settings.instance + '::resizeWidth100', function resizeWidth100(){
 				log.var("$self", $self);
 				var diff = $self.outerWidth(settings.includeMargins) - $self.width();
 				$self.width($self.parent().width() - diff);
-				log('globalInstance' + settings.globalInstance);
+				log('instance' + settings.instance);
 			}) )
 
 			if (settings.initialResize)
@@ -237,6 +252,33 @@ function contentBottomOffset($el){
 }(jQuery));
 
 (function($){
+
+	var Base = function Base(o){
+		this.assign.apply(this, arguments);
+		this.initialize.apply(this, arguments);
+	};
+
+	Base.prototype.initialize = function(){};
+
+	Base.prototype.assign = function(o){
+		for (var i in o)
+			this[i] = o[i];
+		return this;
+	};
+
+	var Sticky = function Sticky(){
+		Base.apply(this, arguments);
+	};
+
+	Sticky.prototype = Object.create(Base.prototype);
+
+	Sticky.prototype.assign({
+		initialize: function(){
+
+		}
+	});
+
+
 	// todo
 	/*
 
@@ -244,13 +286,12 @@ function contentBottomOffset($el){
 
 	 */
 	var globalInstance = 0
-	$.fn.sticky = log.wrap(function sticky(settings){
+	$.fn.sticky = log.wrapc(function sticky(settings){
 		globalInstance++; // used for event namespacing
 
 		var settings = $.extend({
 				inheritWidth: true,
-				createPlaceholder: true,
-				log: false
+				createPlaceholder: true
 			}, settings),
 			bottom = function(){},
 			bottomThreshold,
@@ -290,6 +331,8 @@ function contentBottomOffset($el){
 
 			xlog.var('thisInstance', thisInstance);
 			xlog.var('subInstance', subInstance);
+
+			var log = (thisInstance === 2) ? window.log : xlog;
 
 			log.group('thisInstance', thisInstance, 'subInstance', subInstance);
 
@@ -341,10 +384,10 @@ function contentBottomOffset($el){
 							.hide()
 							.insertBefore($self);
 
-					$self.on('stickyOn', log.cbc(function stickyOnCB(){
+					$self.on('stickyOn', log.cbc(thisInstance + '::stickyOn', function(){
 						log(thisInstance + '.stickyOn event --> $placeholder.show()');
 						$placeholder.show();
-					}) ).on('stickyOff', log.cbc(function stickyOffCB(){
+					}) ).on('stickyOff', log.cbc(thisInstance + '::stickyOff', function(){
 						// console.trace();
 						log(thisInstance + '.stickyOff event --> $placeholder.hide()');
 						$placeholder.hide(); 
@@ -354,7 +397,7 @@ function contentBottomOffset($el){
 				}
 
 				if (inheritWidth){
-					$self.width100({ initialResize: false, globalInstance: globalInstance });
+					$self.width100({ initialResize: false, instance: thisInstance });
 				}
 
 				$(window).on('resize.sticky' + globalInstance + subInstance, resize).resize();
@@ -362,7 +405,7 @@ function contentBottomOffset($el){
 			};
 
 
-			resize = log.cbc(function resize(){
+			resize = log.cbc(thisInstance + '::resize', function(){
 
 				// resize placeholder to match self 
 				if (createPlaceholder){

@@ -35,17 +35,37 @@ var is = {
 		return typeof value !== 'object' && !is.fn(value); // null, NaN, or other non-referential values?
 	}
 };
+window.panel = document.createElement("div");
+panel.innerHTML = "test";
+panel.classList.add('panel');
+Object.assign(panel.style, {
+	position: 'fixed',
+	right: 0,
+	bottom: 0,
+	width: "300px",
+	background: "#aaa"
+});
+var ready = function(){
+	document.body.appendChild(panel);
+};
+
+if (document.readyState != 'loading')
+	ready();
+else
+	document.addEventListener('DOMContentLoaded', ready);
 
 var Base = function Base(o){
-	this.assign.apply(this, arguments);
+	this.assign(o);
 	this.initialize.apply(this, arguments);
 };
 
-Base.prototype.initialize = function(){};
+Base.prototype.initialize = function(o, args){};
 
 Base.prototype.assign = function(o){
-	for (var i in o)
-		this[i] = o[i];
+	if (is.obj(o)){
+		for (var i in o)
+			this[i] = o[i];
+	}
 	return this;
 };
 
@@ -100,19 +120,17 @@ var bg = "background: #eee;";
 log = function(val){
 	if (!log.log)
 		return val;
-	// console.log("+++++++++++================= new log =======================++++++++++++");
+
 	new Log({
 		arguments: arguments,
 		trace: getBacktrace()[2]
 	});
-	// console.table(log.openGroups);
-	// console.log("++++++++++++================ end new log ====================++++++++++++++\r\n \r\n ");
-
 	return val; // always return 1st arg to be an "identity" fn 
 };
 log.log = true;
+log.type = "logger";
 xlog = function(val){ return val; };
-
+xlog.type = "xlogger";
 log.on = function(){
 	log.log = true;
 };
@@ -144,10 +162,6 @@ var styles = {
 	indent: "12px"
 }
 
-/* TODO
-This needs to be coordinated with other margins, but the indentation value
-could be dramatically changed for better grouping clarity.  Maybe its a function of depth, so
-as depth increases, the indentation decreases, to avoid running off the page. */
 var groupStyles = 
 	styles.margin + 
 	styles.padding + 
@@ -182,14 +196,65 @@ log.add = function(group){
 };
 
 
+log.returnToGroup = function(group){
+	while ((log.currentGroup !== group) && (log.currentGroup.type !== "root")){
+		log.currentGroup.close()
+	}
+	return log.currentGroup === group;
+};
+
+
+log.resetGroup = function(){
+	log.currentGroup = log.openGroups.pop();
+	log.resetCurrentFile();
+};
+
+log.resetCurrentFile = function(){
+	if (log.currentGroup.type === "file"){
+		log.currentFile = log.currentGroup.file;
+		return true;
+	}
+	
+	if (log.currentGroup.type === "root"){
+		log.currentFile = "";
+		return true;
+	}
+
+	for (var i = log.openGroups.length - 1; i >= 0; i--){
+		if (log.openGroups[i].type === "root"){
+			log.currentFile = "";
+			return true;
+		}
+
+		if (log.openGroups[i].type === "file"){
+			log.currentFile = log.openGroups[i].file;
+			return true;
+		}
+	}
+
+	console.error("error resetting file");
+	return false;
+};
+
+var Styled = function(o){
+	this.assign(o);
+};
+Styled.prototype = Object.create(Base.prototype);
+Styled.prototype.assign({
+	type: "styled",
+	str: undefined, // str
+	styles: undefined // str
+});
+
+
 
 
 /* * * * * * * * * * *
  *  LOG
  */
 
-var Log = function Log(){
-	this.assign.apply(this, arguments);
+var Log = function Log(o){
+	this.assign(o);
 	this.initialize();
 };
 
@@ -198,55 +263,41 @@ Log.prototype = Object.create(Base.prototype);
 Log.prototype.assign({
 	method: "log",
 	afg: true,
+	styled: [], // objects { str: "str", styles: "css: props;" }
 	initialize: function(){
 		this.autoFileGroup();
-		this.log(this.args());
+		this.resolveArgs();
+		this.log();
 	},
 	autoFileGroup: function(){
-		var p = false, a = false, b = false;
+		if (this.afg){
+			if (log.currentFile !== this.trace.file) {
+				if (log.currentGroup.type == "file")
+					log.currentGroup.close();
 
-		if (this.afg && (log.currentFile !== this.trace.file)) {
-			p = true;
-			// console.log(true, "file mismatch, current file: ", log.currentFile, "!== new file:", this.trace.file);
-
-			if (log.currentGroup.type == "file"){
-				a = true;
-				// console.log(true, "log.currentGroup.type == 'file'");
-				// console.warn("log.currentGroup.close()");
+				if (log.currentFile !== this.trace.file){
+					log.add(new FileGroup({
+						trace: this.trace,
+						lastFile: log.currentFile
+					}));
+				}
+			}
+		} else {
+			if (log.currentGroup.type == "file")
 				log.currentGroup.close();
-			} else {
-				// console.log(false, "current group is not a file group", "currentGroup.type:", log.currentGroup.type);
-			}
-
-			if (log.currentFile !== this.trace.file){
-				b = true;
-				// console.log(true, "file mismatch, current file: ", log.currentFile, "still !== new file:", this.trace.file);
-				// console.log("adding auto FileGroup");
-				log.add(new FileGroup({
-					trace: this.trace,
-					lastFile: log.currentFile
-				}));
-			} else {
-				// console.log(false);
-			}
 		}
 	},
-	args: function(){
-		if (this._args){
-			return this._args;
-		} else {
-			this.arguments = this.arguments || [];
-			this._args = Array.prototype.slice.call(this.arguments);
-			this.customArgs();
-			return this._args;
-		}
+	resolveArgs: function(){
+		this.arguments = this.arguments || [];
+		this.args = Array.prototype.slice.call(this.arguments);
+		this.customArgs();
 	},
 	// provide override point in args fn above
 	customArgs: function(){
-		this._args.unshift("%c" + this.trace.line, groupStyles);
+		this.args.unshift("%c" + this.trace.line, groupStyles);
 	},
 	log: function(args){
-		console[this.method].apply(console, args);
+		console[this.method].apply(console, this.args);
 	}
 })
 
@@ -265,16 +316,11 @@ Cleanup groups with timeout?
 	Var.prototype = Object.create(Log.prototype);
 
 	Var.prototype.assign({
-		args: function(){
-			if (this._args){
-				return this._args;
-			} else {
-				this.arguments = this.arguments || [];
-				this._args = Array.prototype.slice.call(this.arguments, 1);
-				this._args.unshift(this.name+":"); // todo: style this out
-				this.customArgs();
-				return this._args;
-			}
+		resolveArgs: function(){
+			this.arguments = this.arguments || [];
+			this.args = Array.prototype.slice.call(this.arguments, 1);
+			this.args.unshift(this.name+":"); // todo: style this out
+			this.customArgs();
 		}
 	});
 
@@ -309,7 +355,15 @@ Cleanup groups with timeout?
 			} else {
 				console.warn("already closed user group", this.arguments);
 			}
-		}
+		},
+		customArgs: function(){
+			var icon;
+			if (this.icon)
+				icon = this.icon;
+			else 
+				icon = this.trace.line;
+			this.args.unshift("%c" + icon, groupStyles);
+		},
 	});
 
 	log.currentGroup = new Group({
@@ -376,10 +430,56 @@ Cleanup groups with timeout?
 			type: "user",
 			arguments: arguments,
 			afg: false,
-			method: "groupCollapsed"
+			method: "groupCollapsed",
+			icon: "⚡"
 		}));
 
 		return ret;
+	};
+
+/* * * * * * * * * * *
+ *  CLOSURE GROUP
+
+Make sure to pass lastFile (which should be log.currentFile)
+ */
+
+	var ClosureGroup = function ClosureGroup(){
+		this.assign.apply(this, arguments);
+		this.initialize();
+	};
+
+	ClosureGroup.prototype = Object.create(Group.prototype);
+
+	ClosureGroup.prototype.assign({
+		type: "user",
+		expand: true,
+ 		initialize: function(){
+			this.autoFileGroup();
+			this.resolveArgs();
+			 if (!this.expand)
+ 				this.method = "groupCollapsed";
+			this.log();
+			log.add(this);
+			this.execute();
+			this.close();
+ 		},
+ 		execute: function(){
+ 			this.fn.call(this.this);
+ 		}
+	});
+
+	log.closureGroup = function(opts, fn){
+		var o = {};
+		if (is.str(opts)){
+			o.name = opts;
+		} else if (is.obj(opts)){
+			o = opts;
+		}
+
+		opts.trace = getBacktrace()[2];
+		opts.fn = fn;
+
+		new ClosureGroup(opts);
 	};
 
 
@@ -402,7 +502,8 @@ Make sure to pass lastFile (which should be log.currentFile)
 			// console.log("%c================= new file group =======================", "color: #006622");
 			log.currentFile = this.trace.file;
 			// log.autoFileGroup(this.trace());
-			this.log(this.args());
+			this.resolveArgs()
+			this.log();
 
 			var self = this;
 			this.autoCloseTimeout = setTimeout(function(){
@@ -411,12 +512,11 @@ Make sure to pass lastFile (which should be log.currentFile)
 			// console.log("%c================= end file group =======================\r\n \r\n ", "color: #006622");
 		},
 		customArgs: function(){
-			this._args.unshift("%c📄 " +  this.trace.file, "padding: 3px 7px 2px; font-size: 13px; line-height: 18px;" + styles.border + styles.background + "margin-left: " + styles.indent);
+			this.args.unshift("%c📄 " +  this.trace.file, "padding: 3px 7px 2px; font-size: 13px; line-height: 18px;" + styles.border + styles.background);
 		},
 		close: function(auto){
 			if (this.open){
 				if (this === log.currentGroup){
-					console.log("%c", "line-height: 2px;");
 					console.groupEnd();
 					// console.log('closed file group: ' + this.trace.file);
 					log.currentFile = this.lastFile;
@@ -425,20 +525,13 @@ Make sure to pass lastFile (which should be log.currentFile)
 
 					clearTimeout(this.autoCloseTimeout);
 				} else {
-					console.warn("attempting to close incorrect group!", this, log.currentGroup);
+					console.warn((auto ? "auto " : "" ) + "attempting to close incorrect group!", this, log.currentGroup);
 				}
 			} else {
 				console.warn((auto ? "auto " : "") + "already closed file group: ", this.trace.file);
 			}
 		}
 	});
-
-	log.makeFileGroup = function(trace){
-		log.add(new FileGroup({
-			trace: trace,
-			lastFile: log.currentFile
-		}));
-	};
 
 
 
@@ -456,103 +549,64 @@ Blah
  	FunctionGroup.prototype = Object.create(Group.prototype);
 
  	FunctionGroup.prototype.assign({
- 		type: "function",
- 		afg: true,
  		initialize: function(){
- 			// temp
-	 		if (true){
-	 			this.name = this.def.name;
-	 			this.defFile = this.def.trace.file;
-	 			this.argNames = this.def.argNames;
+			this.name = this.def.name;
+			this.defFile = this.def.trace.file;
+			this.argNames = this.def.argNames;
 
-	 			if (!this.def.expand)
-	 				this.method = "groupCollapsed";
+			if (!this.def.expand)
+				this.method = "groupCollapsed";
 
- 				!this.def.cb && this.autoFileGroup();
- 				
- 				if (this.def.cb){
- 					if (this.def.trace.file !== log.currentFile){
- 						if (log.currentGroup.type === "file")
- 							log.currentGroup.close();
- 						if (this.def.trace.file !== log.currentFile){
-							log.add(new FileGroup({
-								trace: this.def.trace,
-								lastFile: log.currentFile
-							}));
- 						}
- 					}
- 				}
-
- 				this.log(this.args());
- 				this.fileChangeLabel();
- 			}
-
+			this.autoFileGroup();
+			this.resolveArgs();
+			this.log();
+			this.fileChangeLabel();
  		},
  		retLog: function(){
- 			if (log.currentGroup !== this){
- 				if (log.currentGroup.type === 'file')
- 					log.currentGroup.close();
- 				else
- 					console.warn("group inconsistency");
- 			}
+ 			if (!log.returnToGroup(this))
+ 				console.warn("group inconsistency");
 
  			if (is.def(this.returnValue)){
- 				if (log.currentGroup === this)
- 					log.currentGroup.close();
- 				else
- 					console.error("log.ret attempting to close non-function group", log.currentGroup);
- 				// console.groupEnd();
+ 				log.currentGroup.close();
  				console.log('%creturn', groupStyles + "margin-left: " + styles.indent, this.returnValue);
  			} else {
  				if (this.logUndefinedReturnValue)
  					console.log('%creturn', groupStyles, this.returnValue);
- 				// console.groupEnd();
- 				if (log.currentGroup === this)
- 					log.currentGroup.close();
- 				else
- 					console.error("log.ret attempting to close non-function group", log.currentGroup);
+ 				
+ 				log.currentGroup.close();
  			}
  			return this.returnValue;
  		},
- 		evaluate: function(){
+ 		execute: function(){
  			this.returnValue = this.def.fn.apply(this.ctx, this.arguments);
  			this.retLog();
  			return this.returnValue;
  		},
  		fileChangeLabel: function(){
  			// if fn is defined elsewhere, label the file change
- 			if (!log.currentFile || (log.currentFile !== this.def.file)){
+ 			if (log.currentFile !== this.def.file){
  				console.log("%c"+ this.def.file, groupStyles + "font-weight: bold");
  				log.currentFile = this.def.file;
  			}
  		},
- 		args: function(){
- 			var line;
- 			if (this._args){
- 				return this._args;
- 			} else {
- 				if (this.def.cb)
- 					line = this.def.line;
- 				else
- 					line = this.trace.line;
+ 		resolveArgs: function(){
+ 			var line = this.trace.line;
 
- 				// build the function call label
- 				var label = [ "%c" + line, groupStyles, this.name + "(" ];
+			// build the function call label
+			var label = [ "%c" + line, groupStyles, this.def.label + "(" ];
 
- 				if (this.argNames.length){
- 					for (var i = 0; i < this.argNames.length; i++){
- 						if (this.argNames[i])
- 							label.push(this.argNames[i]+":");
- 						label.push(this.arguments[i]);
- 						if (i < this.argNames.length - 1){
- 							label.push(",");
- 						}
- 					}
- 				}
- 				label.push(")");
- 				this._args = label;
- 				return this._args;
- 			}
+			if (this.argNames.length){
+				for (var i = 0; i < this.argNames.length; i++){
+					if (this.argNames[i])
+						label.push(this.argNames[i]+":");
+					label.push(this.arguments[i]);
+					if (i < this.argNames.length - 1){
+						label.push(",");
+					}
+				}
+			}
+			label.push(")");
+			this.args = label;
  		},
  		close: function(){
  			if (this.open){
@@ -586,16 +640,30 @@ Blah
 
  	FunctionDefinition.prototype.assign({
  		initialize: function(){
- 			this.name = this.fn.name;
+ 			this.resolveArgs();
+ 		},
+ 		resolveArgs: function(){
+ 			if (is.str(this.arguments[0])){
+ 				this.label = this.arguments[0];
+ 				if (is.fn(this.arguments[1])){
+ 					this.fn = this.arguments[1];
+ 				}
+ 			} else if (is.fn(this.arguments[0])){
+ 				this.fn = this.arguments[0];
+ 				if (this.fn.name)
+ 					this.label = this.fn.name;
+ 			}
+
  			this.argNames = getParamNames(this.fn);
 
- 			// temp
  			this.line = this.trace.line;
  			this.file = this.trace.file;
  		},
  		wrapper: function(){
  			var def = this;
  			return function wrapper(){
+ 				if (!log.log)
+ 					return def.fn.apply(this, arguments);
  				// console.log("%c================= fn wrapper called =======================", "color: purple");
  				var fnGroup = log.add(new FunctionGroup({
  					trace: getBacktrace()[2],
@@ -603,10 +671,88 @@ Blah
  					arguments: arguments,
  					ctx: this
  				})), ret;
- 				ret = fnGroup.evaluate();
+ 				ret = fnGroup.execute();
  				// console.log("%c================= end fn wrapper call =======================\r\n \r\n ", "color: purple");
  				return ret;
  			};
+ 		}
+ 	});
+
+
+
+ 	var CBDefinition = function CBDefinition(){
+ 		this.assign.apply(this, arguments);
+ 		this.initialize();
+ 	};
+
+ 	CBDefinition.prototype = Object.create(FunctionDefinition.prototype);
+
+ 	CBDefinition.prototype.assign({
+ 		wrapper: function(){
+ 			var def = this;
+ 			return function(){
+ 				if (!log.log)
+ 					return def.fn.apply(this, arguments);
+ 				return log.add(new CBGroup({
+ 					trace: getBacktrace()[2],
+ 					afg: false,
+ 					def: def,
+ 					arguments: arguments,
+ 					ctx: this
+ 				})).execute();
+ 			};
+ 		}
+ 	});
+
+ 	var CBGroup = function CBGroup(){
+ 		this.assign.apply(this, arguments);
+ 		this.initialize();
+ 	};
+
+ 	CBGroup.prototype = Object.create(FunctionGroup.prototype);
+
+ 	CBGroup.prototype.assign({
+ 		type: "cb",
+ 		afg: false,
+ 		fileChangeLabel: function(){
+ 			// if fn is defined elsewhere, label the file change
+ 			// if (log.currentFile !== this.def.file){
+ 				console.log("%c📄 "+ this.def.file, groupStyles + "font-weight: bold");
+ 				log.currentFile = this.def.file;
+ 			// }
+ 		},
+ 		resolveArgs: function(){
+
+			// build the function call label
+			var label = [ "%c⚡", groupStyles, this.def.label + " (" ];
+
+			if (this.argNames.length){
+				for (var i = 0; i < this.argNames.length; i++){
+					if (this.argNames[i])
+						label.push(this.argNames[i]+":");
+					label.push(this.arguments[i]);
+					if (i < this.argNames.length - 1){
+						label.push(",");
+					}
+				}
+			}
+			label.push(")");
+			this.args = label;
+ 		},
+ 		close: function(){
+ 			var nearestFileGroup, n;
+ 			if (this.open){
+ 				if (this === log.currentGroup){
+	 				console.groupEnd();
+	 				// console.log("closed fn group: ", this.name);
+	 				this.open = false;
+ 					log.resetGroup();
+ 				} else {
+ 					console.warn("attempting to close incorrect group");
+ 				}
+ 			} else {
+ 				console.warn("already closed, fn group: ", this.name);
+ 			}
  		}
  	});
 
@@ -618,10 +764,12 @@ Blah
 
 
 
-
 log.wrap = function(fn){
-	if (!log.log)
+	if (!log.log){
+		if (!is.fn(arguments[0]) && is.fn(arguments[1]))
+			return arguments[1];
 		return fn;
+	}
 	var def = new FunctionDefinition({
 		trace: getBacktrace()[2],
 		fn: fn,
@@ -633,8 +781,11 @@ log.wrap = function(fn){
 xlog.wrap = function(fn){ return fn; }
 
 log.wrapc = function(fn){
-	if (!log.log)
+	if (!log.log){
+		if (!is.fn(arguments[0]) && is.fn(arguments[1]))
+			return arguments[1];
 		return fn;
+	}
 	var def = new FunctionDefinition({
 		trace: getBacktrace()[2],
 		fn: fn,
@@ -645,9 +796,12 @@ log.wrapc = function(fn){
 xlog.wrapc = function(fn){ return fn;}
 
 log.cb = function(cb){
-	if (!log.log)
+	if (!log.log){
+		if (!is.fn(arguments[0]) && is.fn(arguments[1]))
+			return arguments[1];
 		return cb;
-	var def = new FunctionDefinition({
+	}
+	var def = new CBDefinition({
 		cb: true,
 		trace: getBacktrace()[2],
 		fn: cb,
@@ -656,12 +810,19 @@ log.cb = function(cb){
 	});
 	return def.wrapper();
 };
-xlog.cb = function(cb){ return cb; };
+xlog.cb = function(cb){
+	if (!is.fn(arguments[0]) && is.fn(arguments[1]))
+		return arguments[1];
+	return cb;
+};
 
 log.cbc = function(cb){
-	if (!log.log)
+	if (!log.log){
+		if (!is.fn(arguments[0]) && is.fn(arguments[1]))
+			return arguments[1];
 		return cb;
-	var def = new FunctionDefinition({
+	}
+	var def = new CBDefinition({
 		cb: true,
 		trace: getBacktrace()[2],
 		fn: cb,
@@ -669,7 +830,11 @@ log.cbc = function(cb){
 	});
 	return def.wrapper();
 };
-xlog.cbc = function(cb){ return cb; };
+xlog.cbc = function(cb){ 
+	if (!is.fn(arguments[0]) && is.fn(arguments[1]))
+		return arguments[1];
+	return cb;
+};
 
 
 
@@ -721,6 +886,29 @@ globalFunction3 = log.wrapc(function globalFunction3(){
 	log('globalFunction3');
 });
 
+/* 
+
+log.config({}) // basically, the smart extend
+ - smart deep extend
+ - deep extend objects, but type check base.value and ext.value
+ - call functions with arguments
+
+
+1) you have the parent scope's logger
+
+log.wrap({config}, function(){  2) you clone the parent scope's logger with this config
+	var log = log.clone({config});  3) you clone the parent scope's logger, and add this config
+
+!!! Now you need to reconcile.  Somehow, you want parent --> wrap --> internal
+Maybe, there's a way to let the wrap listen for sub logs, and pre-configure them
+Wouldn't the only way to do that, be to diff the parent and internal, in order to figure out
+whether it should override?
+Unless we store the internal config, and then remake the internal logger with 
+	parent --> wrap --> internal
+
+}); 
+
+*/
 
 })();
 

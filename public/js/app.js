@@ -20,12 +20,13 @@ myFunc = log.wrap(function myFunc(a, b, c){
 }); 
 
 log('yo');
-log();
+log.off();
+log('off me');
 
 var anotherFunc = log.wrapc(function anotherFunc(){
 	return myFunc(1, 2) + myFunc(3, 4) * myFunc(5, 6);
 }); 
-
+log.on();
 log("ruh roh, double digits");
 
 log.groupc('My test group');
